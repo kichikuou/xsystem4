@@ -687,8 +687,13 @@ bool sact_Joypad_GetDigitalStickStatus(int num, int type, bool *left, bool *righ
 
 int sact_Key_ClearFlag(void)
 {
-	key_clear_flag();
+	key_clear_flag(false);
 	return 1;
+}
+
+void sact_Key_ClearFlagNoCtrl(void)
+{
+	key_clear_flag(true);
 }
 
 int sact_Key_IsDown(int keycode)
@@ -845,6 +850,7 @@ int SACT2_SP_GetBrightness(int sp_no)
 	    HLL_EXPORT(Joypad_GetAnalogStickStatus, sact_Joypad_GetAnalogStickStatus), \
 	    HLL_EXPORT(Joypad_GetDigitalStickStatus, sact_Joypad_GetDigitalStickStatus), \
 	    HLL_EXPORT(Key_ClearFlag, sact_Key_ClearFlag), \
+	    HLL_EXPORT(Key_ClearFlagNoCtrl, sact_Key_ClearFlagNoCtrl), \
 	    HLL_EXPORT(Key_IsDown, sact_Key_IsDown), \
 	    HLL_EXPORT(Timer_Get, vm_time), \
 	    HLL_EXPORT(CG_IsExist, sact_CG_IsExist), \
@@ -920,7 +926,6 @@ HLL_WARN_UNIMPLEMENTED(0, int,  SACTDX, Sound_GetGroupNumFromDataNum, int n);
 //static void SACTDX_FFT_rdft(ref array@float a);
 //static void SACTDX_FFT_hanning_window(ref array@float a);
 //static int SACTDX_Music_AnalyzeSampleData(ref array@float l, ref array@float r, ref array@int src, int chns, int bps);
-//static void SACTDX_Key_ClearFlagNoCtrl(void);
 //static void SACTDX_Key_ClearFlagOne(int nKeyCode);
 //static bool SACTDX_VIEW_SetMode(int nMode);
 //static int SACTDX_VIEW_GetMode(void);
@@ -938,7 +943,6 @@ HLL_WARN_UNIMPLEMENTED(0, int,  SACTDX, Sound_GetGroupNumFromDataNum, int n);
 	HLL_TODO_EXPORT(FFT_rdft, SACTDX_FFT_rdft),		\
 	HLL_TODO_EXPORT(FFT_hanning_window, SACTDX_FFT_hanning_window),	\
 	HLL_TODO_EXPORT(Music_AnalyzeSampleData, SACTDX_Music_AnalyzeSampleData), \
-	HLL_TODO_EXPORT(Key_ClearFlagNoCtrl, SACTDX_Key_ClearFlagNoCtrl), \
 	HLL_TODO_EXPORT(Key_ClearFlagOne, SACTDX_Key_ClearFlagOne), \
 	HLL_EXPORT(TRANS_Begin, sact_TRANS_Begin),	    \
 	HLL_EXPORT(TRANS_Update, sact_TRANS_Update),	    \

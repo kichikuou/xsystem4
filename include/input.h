@@ -139,7 +139,7 @@ extern bool keyboard_focus;
 
 void handle_events(void);
 bool key_is_down(enum sact_keycode code);
-void key_clear_flag(void);
+void key_clear_flag(bool no_ctrl);
 bool joy_key_is_down(uint8_t code);
 void joy_clear_flag(void);
 void mouse_get_pos(int *x, int *y);

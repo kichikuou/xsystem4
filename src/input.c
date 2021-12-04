@@ -190,10 +190,11 @@ bool joy_key_is_down(uint8_t code)
 	}
 }
 
-void key_clear_flag(void)
+void key_clear_flag(bool no_ctrl)
 {
 	for (int i = 0; i < VK_NR_KEYCODES; i++) {
-		key_state[i] = false;
+		if (!(no_ctrl && i == VK_CONTROL))
+			key_state[i] = false;
 	}
 }
 
