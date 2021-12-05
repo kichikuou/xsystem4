@@ -258,7 +258,11 @@ int sact_SP_CreatePixelOnly(int sp_no, int width, int height)
 	return 1;
 }
 
-//int SACT2_SP_CreateCustom(int sp);
+int sact_SP_CreateCustom(int sp_no)
+{
+	sact_create_sprite(sp_no, 1, 1, 0, 0, 0, 255);
+	return 1;
+}
 
 int sact_SP_Delete(int sp_no)
 {
@@ -797,7 +801,7 @@ int SACT2_SP_GetBrightness(int sp_no)
 	    HLL_EXPORT(SP_SaveCG, sact_SP_SaveCG), \
 	    HLL_EXPORT(SP_Create, sact_SP_Create), \
 	    HLL_EXPORT(SP_CreatePixelOnly, sact_SP_CreatePixelOnly), \
-	    HLL_TODO_EXPORT(SP_CreateCustom, SACT2_SP_CreateCustom), \
+	    HLL_EXPORT(SP_CreateCustom, sact_SP_CreateCustom), \
 	    HLL_EXPORT(SP_Delete, sact_SP_Delete), \
 	    HLL_EXPORT(SP_SetPos, sact_SP_SetPos), \
 	    HLL_EXPORT(SP_SetX, sact_SP_SetX), \
