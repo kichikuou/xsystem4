@@ -14,7 +14,16 @@
  * along with this program; if not, see <http://gnu.org/licenses/>.
  */
 
+#include <stdio.h>
+#include <string.h>
+
+#include "system4/file.h"
+#include "system4/string.h"
+
 #include "hll.h"
+#include "savedata.h"
+#include "vm/page.h"
+#include "xsystem4.h"
 
 HLL_WARN_UNIMPLEMENTED(true, bool, PastelChime2, InitPastelChime2);
 //bool PastelChime2_DungeonDataSave(int nID, struct page **aDungeon);
@@ -44,16 +53,90 @@ HLL_WARN_UNIMPLEMENTED(false, bool, PastelChime2, DungeonDataFromSaveData, int n
 //void PastelChime2_Field_UpdateDoors(bool *pbOpen, bool *pbClose, int *pnOpenTex, int *pnCloseTex, float fx1, float fy1, float fz1, float fx2, float fy2, float fz2, float fx3, float fy3, float fz3, float fBlockSize, bool bPlayer2, bool bPlayer3);
 //void PastelChime2_AutoDungeonE_Create(int nFloor, int *nEntX, int *nEntY, int nComplex, int nWallArrangeMethod, int nFloorArrangeMethod, int nFieldSizeX, int nFieldSizeY, int nDoorLockPercent, struct page **dci);
 //void PastelChime2_TestVMArray(struct page **a);
-HLL_WARN_UNIMPLEMENTED( , void, PastelChime2, str_erase_found, struct string **s, struct string **key);
+
+static void PastelChime2_str_erase_found(struct string **s, struct string **key)
+{
+	char *src = (*s)->text;
+	char *found = strstr(src, (*key)->text);
+	if (!found)
+		return;
+	// TODO: Use string_alloc/string_realloc
+	char *buf = xmalloc((*s)->size);
+	char *dst = buf;
+	do {
+		strncpy(dst, src, found - src);
+		dst += found - src;
+		src = found + (*key)->size;
+		found = strstr(src, (*key)->text);
+	} while (found);
+	strcpy(dst, src);
+
+	free_string(*s);
+	*s = make_string(buf, strlen(buf));
+	free(buf);
+}
+
 //bool PastelChime2_Field_PickUpRoadShape(struct page **a4, struct page **a3, struct page **a2, struct page **a1, struct page **a0, struct page **ac, int nFloor);
 //void PastelChime2_SaveMapPicture(struct string *sFileName);
 //bool PastelChime2_ShellOpen(struct string *sFileName);
 //bool PastelChime2_File_GetTime(struct string *strFileName, int *nYear, int *nMonth, int *nDayOfWeek, int *nDay, int *nHour, int *nMinute, int *nSecond, int *nMilliseconds);
-HLL_WARN_UNIMPLEMENTED(false, bool, PastelChime2, SaveArray, struct string *file_name, struct page **buf);
-HLL_WARN_UNIMPLEMENTED(false, bool, PastelChime2, LoadArray, struct string *file_name, struct page **buf);
-HLL_WARN_UNIMPLEMENTED(false, bool, PastelChime2, SaveStringArray, struct string *file_name, struct page **buf);
-HLL_WARN_UNIMPLEMENTED(false, bool, PastelChime2, LoadStringArray, struct string *file_name, struct page **buf);
-HLL_WARN_UNIMPLEMENTED(false, bool, PastelChime2, File_Delete, struct string *file_name);
+
+static bool PastelChime2_SaveArray(struct string *file_name, struct page **page)
+{
+	cJSON *json = page_to_json(*page);
+	char *str = cJSON_Print(json);
+	cJSON_Delete(json);
+
+	char *path = unix_path(file_name->text);
+	bool ok = file_write(path, (uint8_t *)str, strlen(str));
+	free(path);
+	free(str);
+	return ok;
+}
+
+static bool load_array(struct string *file_name, struct page **_page, enum ain_data_type data_type)
+{
+	char *path = unix_path(file_name->text);
+	char *file_content = file_read(path, NULL);
+	free(path);
+	if (!file_content)
+		return false;
+
+	cJSON *json = cJSON_Parse(file_content);
+	free(file_content);
+	if (!cJSON_IsArray(json)) {
+		cJSON_Delete(json);
+		return false;
+	}
+
+	union vm_value dim = { .i = cJSON_GetArraySize(json) };
+	if (!*_page)
+		*_page = alloc_array(1, &dim, data_type, 0, false);
+	struct page *page = *_page;
+
+	json_load_page(page, json);
+	cJSON_Delete(json);
+	return true;
+}
+
+static bool PastelChime2_LoadArray(struct string *file_name, struct page **page)
+{
+	return load_array(file_name, page, AIN_ARRAY_INT);
+}
+
+static bool PastelChime2_LoadStringArray(struct string *file_name, struct page **page)
+{
+	return load_array(file_name, page, AIN_ARRAY_STRING);
+}
+
+static bool PastelChime2_File_Delete(struct string *file_name)
+{
+	char *path = unix_path(file_name->text);
+	int r = remove(path);
+	free(path);
+	return r == 0;
+}
+
 //bool PastelChime2_File_CreateDummy(struct string *file_name);
 
 HLL_LIBRARY(PastelChime2,
@@ -92,7 +175,7 @@ HLL_LIBRARY(PastelChime2,
 	    HLL_TODO_EXPORT(File_GetTime, PastelChime2_File_GetTime),
 	    HLL_EXPORT(SaveArray, PastelChime2_SaveArray),
 	    HLL_EXPORT(LoadArray, PastelChime2_LoadArray),
-	    HLL_EXPORT(SaveStringArray, PastelChime2_SaveStringArray),
+	    HLL_EXPORT(SaveStringArray, PastelChime2_SaveArray),
 	    HLL_EXPORT(LoadStringArray, PastelChime2_LoadStringArray),
 	    HLL_EXPORT(File_Delete, PastelChime2_File_Delete),
 	    HLL_TODO_EXPORT(File_CreateDummy, PastelChime2_File_CreateDummy)
