@@ -74,7 +74,7 @@ static Point texture_pos(struct dungeon_context *ctx, int x, int z)
 
 struct dungeon_map *dungeon_map_create(enum draw_dungeon_version version)
 {
-	if (version == DRAW_DUNGEON_14)
+	if (version != DRAW_DUNGEON_1)
 		return NULL;  // GALZOO does not use DrawDungeon's 2D map functions.
 
 	struct dungeon_map *map = xcalloc(1, sizeof(struct dungeon_map));

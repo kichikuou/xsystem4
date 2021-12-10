@@ -16,14 +16,68 @@
 
 #include <math.h>
 
+#include "system4/string.h"
+
+#include "dungeon/dgn.h"
+#include "dungeon/dungeon.h"
+#include "dungeon/map.h"  // shouldn't be needed
 #include "hll.h"
 
-//﻿int DrawField_Init(int nSurface);
-//void DrawField_Release(int nSurface);
-//void DrawField_SetDrawFlag(int nSurface, int nFlag);
-//bool DrawField_GetDrawFlag(int nSurface);
-//int DrawField_LoadFromFile(int nSurface, struct string *szFileName, int nNum);
-//int DrawField_LoadTexture(int nSurface, struct string *szFileName);
+extern struct dungeon_context *current_context;
+
+static struct dgn_cell *dungeon_get_cell(int surface, int x, int y, int z)
+{
+	struct dungeon_context *ctx = dungeon_get_context(surface);
+	if (!ctx || !ctx->dgn || !dgn_is_in_map(ctx->dgn, x, y, z))
+		return NULL;
+	return dgn_cell_at(ctx->dgn, x, y, z);
+}
+
+static int DrawField_Init(int surface)
+{
+	return dungeon_init(DRAW_FIELD, surface);
+}
+
+static void DrawField_Release(int surface)
+{
+	struct dungeon_context *ctx = dungeon_get_context(surface);
+	if (!ctx)
+		return;
+	dungeon_fini();
+}
+
+static void DrawField_SetDrawFlag(int surface, int flag)
+{
+	struct dungeon_context *ctx = dungeon_get_context(surface);
+	if (!ctx)
+		return;
+	ctx->draw_enabled = flag;
+}
+
+static bool DrawField_GetDrawFlag(int surface)
+{
+	struct dungeon_context *ctx = dungeon_get_context(surface);
+	if (!ctx)
+		return false;
+	return ctx->draw_enabled;
+}
+
+static int DrawField_LoadFromFile(int surface, struct string *file_name, int num)
+{
+	struct dungeon_context *ctx = dungeon_get_context(surface);
+	if (!ctx)
+		return false;
+	return dungeon_load_dungeon(ctx, file_name->text, num);
+}
+
+static int DrawField_LoadTexture(int surface, struct string *file_name)
+{
+	struct dungeon_context *ctx = dungeon_get_context(surface);
+	if (!ctx)
+		return false;
+	return dungeon_load_texture(ctx, file_name->text);
+}
+
 //int DrawField_LoadEventTexture(int nSurface, struct string *szFileName);
 //bool DrawField_BeginLoad(int nSurface, struct string *szFileName, int nNum);
 //bool DrawField_IsLoadEnd(int nSurface);
@@ -37,92 +91,145 @@
 //bool DrawField_IsLoadTextureSucceeded(int nSurface);
 //void DrawField_UpdateTexture(int nSurface);
 //void DrawField_SetCamera(int nSurface, float fX, float fY, float fZ, float fAngle, float fAngleP);
-//int DrawField_GetMapX(int nSurface);
-//int DrawField_GetMapY(int nSurface);
-//int DrawField_GetMapZ(int nSurface);
-//int DrawField_IsInMap(int nSurface, int nX, int nY, int nZ);
-//int DrawField_IsFloor(int nSurface, int nX, int nY, int nZ);
-//int DrawField_IsStair(int nSurface, int nX, int nY, int nZ);
-//int DrawField_IsStairN(int nSurface, int nX, int nY, int nZ);
-//int DrawField_IsStairW(int nSurface, int nX, int nY, int nZ);
-//int DrawField_IsStairS(int nSurface, int nX, int nY, int nZ);
-//int DrawField_IsStairE(int nSurface, int nX, int nY, int nZ);
-//int DrawField_IsWallN(int nSurface, int nX, int nY, int nZ);
-//int DrawField_IsWallW(int nSurface, int nX, int nY, int nZ);
-//int DrawField_IsWallS(int nSurface, int nX, int nY, int nZ);
-//int DrawField_IsWallE(int nSurface, int nX, int nY, int nZ);
-//int DrawField_IsDoorN(int nSurface, int nX, int nY, int nZ);
-//int DrawField_IsDoorW(int nSurface, int nX, int nY, int nZ);
-//int DrawField_IsDoorS(int nSurface, int nX, int nY, int nZ);
-//int DrawField_IsDoorE(int nSurface, int nX, int nY, int nZ);
-//int DrawField_IsEnter(int nSurface, int nX, int nY, int nZ);
-//int DrawField_IsEnterN(int nSurface, int nX, int nY, int nZ);
-//int DrawField_IsEnterW(int nSurface, int nX, int nY, int nZ);
-//int DrawField_IsEnterS(int nSurface, int nX, int nY, int nZ);
-//int DrawField_IsEnterE(int nSurface, int nX, int nY, int nZ);
-//int DrawField_GetEvFloor(int nSurface, int nX, int nY, int nZ);
-//int DrawField_GetEvWallN(int nSurface, int nX, int nY, int nZ);
-//int DrawField_GetEvWallW(int nSurface, int nX, int nY, int nZ);
-//int DrawField_GetEvWallS(int nSurface, int nX, int nY, int nZ);
-//int DrawField_GetEvWallE(int nSurface, int nX, int nY, int nZ);
-//int DrawField_GetEvFloor2(int nSurface, int nX, int nY, int nZ);
-//int DrawField_GetEvWallN2(int nSurface, int nX, int nY, int nZ);
-//int DrawField_GetEvWallW2(int nSurface, int nX, int nY, int nZ);
-//int DrawField_GetEvWallS2(int nSurface, int nX, int nY, int nZ);
-//int DrawField_GetEvWallE2(int nSurface, int nX, int nY, int nZ);
-//int DrawField_GetTexFloor(int nSurface, int nX, int nY, int nZ);
-//int DrawField_GetTexCeiling(int nSurface, int nX, int nY, int nZ);
-//int DrawField_GetTexWallN(int nSurface, int nX, int nY, int nZ);
-//int DrawField_GetTexWallW(int nSurface, int nX, int nY, int nZ);
-//int DrawField_GetTexWallS(int nSurface, int nX, int nY, int nZ);
-//int DrawField_GetTexWallE(int nSurface, int nX, int nY, int nZ);
-//int DrawField_GetTexDoorN(int nSurface, int nX, int nY, int nZ);
-//int DrawField_GetTexDoorW(int nSurface, int nX, int nY, int nZ);
-//int DrawField_GetTexDoorS(int nSurface, int nX, int nY, int nZ);
-//int DrawField_GetTexDoorE(int nSurface, int nX, int nY, int nZ);
+
+static int DrawField_GetMapX(int surface)
+{
+	struct dungeon_context *ctx = dungeon_get_context(surface);
+	if (!ctx || !ctx->dgn)
+		return -1;
+	return ctx->dgn->size_x;
+}
+
+static int DrawField_GetMapY(int surface)
+{
+	struct dungeon_context *ctx = dungeon_get_context(surface);
+	if (!ctx || !ctx->dgn)
+		return -1;
+	return ctx->dgn->size_y;
+}
+
+static int DrawField_GetMapZ(int surface)
+{
+	struct dungeon_context *ctx = dungeon_get_context(surface);
+	if (!ctx || !ctx->dgn)
+		return -1;
+	return ctx->dgn->size_z;
+}
+
+static int DrawField_IsInMap(int surface, int x, int y, int z)
+{
+	struct dungeon_context *ctx = dungeon_get_context(surface);
+	if (!ctx || !ctx->dgn)
+		return -1;
+	return dgn_is_in_map(ctx->dgn, x, y, z);
+}
+
+#define CELL_GETTER(name, defval, expr) \
+	static int name(int surface, int x, int y, int z) \
+	{ \
+		struct dgn_cell *cell = dungeon_get_cell(surface, x, y, z); \
+		if (!cell) \
+			return defval; \
+		return expr; \
+	}
+
+CELL_GETTER(DrawField_IsFloor, 0, cell->floor != -1);
+CELL_GETTER(DrawField_IsStair, 0, cell->stairs_texture != -1);
+CELL_GETTER(DrawField_IsStairN, 0, cell->stairs_texture != -1 && cell->stairs_orientation == 0);
+CELL_GETTER(DrawField_IsStairW, 0, cell->stairs_texture != -1 && cell->stairs_orientation == 1);
+CELL_GETTER(DrawField_IsStairS, 0, cell->stairs_texture != -1 && cell->stairs_orientation == 2);
+CELL_GETTER(DrawField_IsStairE, 0, cell->stairs_texture != -1 && cell->stairs_orientation == 3);
+CELL_GETTER(DrawField_IsWallN, 0, cell->north_wall != -1);
+CELL_GETTER(DrawField_IsWallW, 0, cell->west_wall != -1);
+CELL_GETTER(DrawField_IsWallS, 0, cell->south_wall != -1);
+CELL_GETTER(DrawField_IsWallE, 0, cell->east_wall != -1);
+CELL_GETTER(DrawField_IsDoorN, 0, cell->north_door != -1);
+CELL_GETTER(DrawField_IsDoorW, 0, cell->west_door != -1);
+CELL_GETTER(DrawField_IsDoorS, 0, cell->south_door != -1);
+CELL_GETTER(DrawField_IsDoorE, 0, cell->east_door != -1);
+CELL_GETTER(DrawField_IsEnter, 0, cell->enterable);
+CELL_GETTER(DrawField_IsEnterN, 0, cell->enterable_north);
+CELL_GETTER(DrawField_IsEnterW, 0, cell->enterable_west);
+CELL_GETTER(DrawField_IsEnterS, 0, cell->enterable_south);
+CELL_GETTER(DrawField_IsEnterE, 0, cell->enterable_east);
+CELL_GETTER(DrawField_GetEvFloor, 0, cell->floor_event);
+CELL_GETTER(DrawField_GetEvWallN, 0, cell->north_event);
+CELL_GETTER(DrawField_GetEvWallW, 0, cell->west_event);
+CELL_GETTER(DrawField_GetEvWallS, 0, cell->south_event);
+CELL_GETTER(DrawField_GetEvWallE, 0, cell->east_event);
+CELL_GETTER(DrawField_GetEvFloor2, 0, cell->floor_event2);
+CELL_GETTER(DrawField_GetEvWallN2, 0, cell->north_event2);
+CELL_GETTER(DrawField_GetEvWallW2, 0, cell->west_event2);
+CELL_GETTER(DrawField_GetEvWallS2, 0, cell->south_event2);
+CELL_GETTER(DrawField_GetEvWallE2, 0, cell->east_event2);
+CELL_GETTER(DrawField_GetTexFloor, -1, cell->floor);
+CELL_GETTER(DrawField_GetTexCeiling, -1, cell->ceiling);
+CELL_GETTER(DrawField_GetTexWallN, -1, cell->north_wall);
+CELL_GETTER(DrawField_GetTexWallW, -1, cell->west_wall);
+CELL_GETTER(DrawField_GetTexWallS, -1, cell->south_wall);
+CELL_GETTER(DrawField_GetTexWallE, -1, cell->east_wall);
+CELL_GETTER(DrawField_GetTexDoorN, -1, cell->north_door);
+CELL_GETTER(DrawField_GetTexDoorW, -1, cell->west_door);
+CELL_GETTER(DrawField_GetTexDoorS, -1, cell->south_door);
+CELL_GETTER(DrawField_GetTexDoorE, -1, cell->east_door);
+
 //bool DrawField_GetDoorNAngle(int nSurface, int nX, int nY, int nZ, float *pfAngle);
 //bool DrawField_GetDoorWAngle(int nSurface, int nX, int nY, int nZ, float *pfAngle);
 //bool DrawField_GetDoorSAngle(int nSurface, int nX, int nY, int nZ, float *pfAngle);
 //bool DrawField_GetDoorEAngle(int nSurface, int nX, int nY, int nZ, float *pfAngle);
+
+#define CELL_SETTER(name, type, expr, update_map) \
+	static void name(int surface, int x, int y, int z, type value) \
+	{ \
+		struct dungeon_context *ctx = dungeon_get_context(surface); \
+		if (!ctx || !ctx->dgn || !dgn_is_in_map(ctx->dgn, x, y, z)) \
+			return; \
+		struct dgn_cell *cell = dgn_cell_at(ctx->dgn, x, y, z); \
+		expr = value; \
+		if (update_map) \
+			dungeon_map_update_cell(ctx, x, y, z);	\
+	}
+
 //bool DrawField_SetDoorNAngle(int nSurface, int nX, int nY, int nZ, float fAngle);
 //bool DrawField_SetDoorWAngle(int nSurface, int nX, int nY, int nZ, float fAngle);
 //bool DrawField_SetDoorSAngle(int nSurface, int nX, int nY, int nZ, float fAngle);
 //bool DrawField_SetDoorEAngle(int nSurface, int nX, int nY, int nZ, float fAngle);
-//void DrawField_SetEvFloor(int nSurface, int nX, int nY, int nZ, int nEvent);
-//void DrawField_SetEvWallN(int nSurface, int nX, int nY, int nZ, int nEvent);
-//void DrawField_SetEvWallW(int nSurface, int nX, int nY, int nZ, int nEvent);
-//void DrawField_SetEvWallS(int nSurface, int nX, int nY, int nZ, int nEvent);
-//void DrawField_SetEvWallE(int nSurface, int nX, int nY, int nZ, int nEvent);
-//void DrawField_SetEvFloor2(int nSurface, int nX, int nY, int nZ, int nEvent);
-//void DrawField_SetEvWallN2(int nSurface, int nX, int nY, int nZ, int nEvent);
-//void DrawField_SetEvWallW2(int nSurface, int nX, int nY, int nZ, int nEvent);
-//void DrawField_SetEvWallS2(int nSurface, int nX, int nY, int nZ, int nEvent);
-//void DrawField_SetEvWallE2(int nSurface, int nX, int nY, int nZ, int nEvent);
-//void DrawField_SetEvMag(int nSurface, int nX, int nY, int nZ, float fMag);
-//void DrawField_SetEvRate(int nSurface, int nX, int nY, int nZ, int nRate);
-//void DrawField_SetEnter(int nSurface, int nX, int nY, int nZ, int nFlag);
-//void DrawField_SetEnterN(int nSurface, int nX, int nY, int nZ, int nFlag);
-//void DrawField_SetEnterW(int nSurface, int nX, int nY, int nZ, int nFlag);
-//void DrawField_SetEnterS(int nSurface, int nX, int nY, int nZ, int nFlag);
-//void DrawField_SetEnterE(int nSurface, int nX, int nY, int nZ, int nFlag);
-//bool DrawField_SetDoorNLock(int nSurface, int nX, int nY, int nZ, int nLock);
-//bool DrawField_SetDoorWLock(int nSurface, int nX, int nY, int nZ, int nLock);
-//bool DrawField_SetDoorSLock(int nSurface, int nX, int nY, int nZ, int nLock);
-//bool DrawField_SetDoorELock(int nSurface, int nX, int nY, int nZ, int nLock);
+CELL_SETTER(DrawField_SetEvFloor, int, cell->floor_event, true);
+CELL_SETTER(DrawField_SetEvWallN, int, cell->north_event, true);
+CELL_SETTER(DrawField_SetEvWallW, int, cell->west_event, true);
+CELL_SETTER(DrawField_SetEvWallS, int, cell->south_event, true);
+CELL_SETTER(DrawField_SetEvWallE, int, cell->east_event, true);
+CELL_SETTER(DrawField_SetEvFloor2, int, cell->floor_event2, false);
+CELL_SETTER(DrawField_SetEvWallN2, int, cell->north_event2, false);
+CELL_SETTER(DrawField_SetEvWallW2, int, cell->west_event2, false);
+CELL_SETTER(DrawField_SetEvWallS2, int, cell->south_event2, false);
+CELL_SETTER(DrawField_SetEvWallE2, int, cell->east_event2, false);
+//void DrawField_SetEvMag(int surface, int x, int y, int z, float mag);
+CELL_SETTER(DrawField_SetEvRate, int, cell->event_blend_rate, false);
+CELL_SETTER(DrawField_SetEnter, int, cell->enterable, false);
+CELL_SETTER(DrawField_SetEnterN, int, cell->enterable_north, true);
+CELL_SETTER(DrawField_SetEnterW, int, cell->enterable_west, true);
+CELL_SETTER(DrawField_SetEnterS, int, cell->enterable_south, true);
+CELL_SETTER(DrawField_SetEnterE, int, cell->enterable_east, true);
+HLL_WARN_UNIMPLEMENTED(false, bool, DrawField, SetDoorNLock, int nSurface, int nX, int nY, int nZ, int nLock);
+HLL_WARN_UNIMPLEMENTED(false, bool, DrawField, SetDoorWLock, int nSurface, int nX, int nY, int nZ, int nLock);
+HLL_WARN_UNIMPLEMENTED(false, bool, DrawField, SetDoorSLock, int nSurface, int nX, int nY, int nZ, int nLock);
+HLL_WARN_UNIMPLEMENTED(false, bool, DrawField, SetDoorELock, int nSurface, int nX, int nY, int nZ, int nLock);
 //bool DrawField_GetDoorNLock(int nSurface, int nX, int nY, int nZ, int *pnLock);
 //bool DrawField_GetDoorWLock(int nSurface, int nX, int nY, int nZ, int *pnLock);
 //bool DrawField_GetDoorSLock(int nSurface, int nX, int nY, int nZ, int *pnLock);
 //bool DrawField_GetDoorELock(int nSurface, int nX, int nY, int nZ, int *pnLock);
-//void DrawField_SetTexFloor(int nSurface, int nX, int nY, int nZ, int nTexture);
-//void DrawField_SetTexCeiling(int nSurface, int nX, int nY, int nZ, int nTexture);
-//void DrawField_SetTexWallN(int nSurface, int nX, int nY, int nZ, int nTexture);
-//void DrawField_SetTexWallW(int nSurface, int nX, int nY, int nZ, int nTexture);
-//void DrawField_SetTexWallS(int nSurface, int nX, int nY, int nZ, int nTexture);
-//void DrawField_SetTexWallE(int nSurface, int nX, int nY, int nZ, int nTexture);
-//void DrawField_SetTexDoorN(int nSurface, int nX, int nY, int nZ, int nTexture);
-//void DrawField_SetTexDoorW(int nSurface, int nX, int nY, int nZ, int nTexture);
-//void DrawField_SetTexDoorS(int nSurface, int nX, int nY, int nZ, int nTexture);
-//void DrawField_SetTexDoorE(int nSurface, int nX, int nY, int nZ, int nTexture);
+CELL_SETTER(DrawField_SetTexFloor, int, cell->floor, true);
+CELL_SETTER(DrawField_SetTexCeiling, int, cell->ceiling, false);
+CELL_SETTER(DrawField_SetTexWallN, int, cell->north_wall, true);
+CELL_SETTER(DrawField_SetTexWallW, int, cell->west_wall, true);
+CELL_SETTER(DrawField_SetTexWallS, int, cell->south_wall, true);
+CELL_SETTER(DrawField_SetTexWallE, int, cell->east_wall, true);
+CELL_SETTER(DrawField_SetTexDoorN, int, cell->north_door, true);
+CELL_SETTER(DrawField_SetTexDoorW, int, cell->west_door, true);
+CELL_SETTER(DrawField_SetTexDoorS, int, cell->south_door, true);
+CELL_SETTER(DrawField_SetTexDoorE, int, cell->east_door, true);
+
 //void DrawField_SetTexStair(int nSurface, int nX, int nY, int nZ, int nTexture, int nType);
 //void DrawField_SetShadowTexFloor(int nSurface, int nX, int nY, int nZ, int nTexture);
 //void DrawField_SetShadowTexCeiling(int nSurface, int nX, int nY, int nZ, int nTexture);
@@ -141,8 +248,7 @@
 //void DrawField_DrawLMap(int nSurface, int nSprite);
 //void DrawField_SetMapCG(int nSurface, int nIndex, int nSprite);
 //void DrawField_SetDrawLMapFloor(int nSurface, int nFloor);
-//void DrawField_SetPlayerPos(int nSurface, int nX, int nY, int nZ);
-//void DrawField_SetWalked(int nSurface, int nX, int nY, int nZ, int nFlag);
+HLL_WARN_UNIMPLEMENTED( , void, DrawField, SetPlayerPos, int nSurface, int nX, int nY, int nZ);
 //void DrawField_SetLooked(int nSurface, int nX, int nY, int nZ, bool bFlag);
 //bool DrawField_SetHideDrawMapFloor(int nSurface, int nFloor, bool bHide);
 //bool DrawField_SetHideDrawMapWall(int nSurface, int nWall, bool bHide);
@@ -152,7 +258,12 @@
 //bool DrawField_SetDirect3DMode(int nSurface, int nFlag);
 //bool DrawField_GetDirect3DMode(int nSurface);
 //void DrawField_SaveDrawSettingFlag(int nDirect3D, int nInterlace, int nHalf);
-//void DrawField_SetPerspective(int nSurface, int nWidth, int nHeight, float fNear, float fFar, float fDeg);
+
+static void DrawField_SetPerspective(int surface, int width, int height, float near, float far, float deg)
+{
+	WARNING("DrawField_SetPerspective %dx%d %f-%f %f", width, height, near, far, deg);
+}
+
 //void DrawField_SetDrawShadowMap(int nSurface, bool bDrawShadowMap);
 //int DrawField_CalcNumofFloor(int nSurface);
 //int DrawField_CalcNumofWalk(int nSurface);
@@ -164,14 +275,40 @@
 //float DrawField_Atan2(float fY, float fX);
 //bool DrawField_TransPos2DToPos3DOnPlane(int nSurface, int nScreenX, int nScreenY, float fPlaneY, float *pfX, float *pfY, float *pfZ);
 //bool DrawField_TransPos3DToPos2D(int nSurace, float fX, float fY, float fZ, int *pnScreenX, int *pnScreenY);
-//int DrawField_GetCharaNumMax(int nSurface);
-//void DrawField_SetCharaSprite(int nSurface, int nNum, int nSprite);
-//void DrawField_SetCharaPos(int nSurface, int nNum, float fX, float fY, float fZ);
-//void DrawField_SetCharaCG(int nSurface, int nNum, int nCG);
-//void DrawField_SetCharaCGInfo(int nSurface, int nNum, int nNumofCharaX, int nNumofCharaY);
+
+static int DrawField_GetCharaNumMax(int surface)
+{
+	return 256;
+}
+
+static void DrawField_SetCharaSprite(int surface, int num, int sprite)
+{
+	WARNING("DrawField_SetCharaSprite num=%d, sprite=%d", num, sprite);
+}
+
+static void DrawField_SetCharaPos(int surface, int num, float x, float y, float z)
+{
+	WARNING("DrawField_SetCharaPos num=%d, (%f, %f, %f)", num, x, y, z);
+}
+
+static void DrawField_SetCharaCG(int surface, int num, int cg)
+{
+	WARNING("DrawField_SetCharaCG num=%d, cg=%d", num, cg);
+}
+
+static void DrawField_SetCharaCGInfo(int surface, int num, int numofCharaX, int numofCharaY)
+{
+	WARNING("DrawField_SetCharaCGInfo num=%d, #charaX=%d, #charaY=%d", num, numofCharaX, numofCharaY);
+}
+
 //void DrawField_SetCharaZBias(int nSurface, float fZBias0, float fZBias1, float fZBias2, float fZBias3);
-//void DrawField_SetCharaShow(int nSurface, int nNum, bool bShow);
-//void DrawField_SetCenterOffsetY(int nSurface, float fY);
+
+static void DrawField_SetCharaShow(int surface, int num, bool show)
+{
+	WARNING("DrawField_SetCharaShow num=%d, %d", num, show);
+}
+
+HLL_WARN_UNIMPLEMENTED( , void, DrawField, SetCenterOffsetY, int nSurface, float fY);
 //void DrawField_SetBuilBoard(int nSurface, int nNum, int nSprite);
 //void DrawField_SetSphereTheta(int nSurface, float fX, float fY, float fZ);
 //void DrawField_SetSphereColor(int nSurface, float fTop, float fBottom);
@@ -201,12 +338,12 @@
 //int DrawField_GetNumofTexSound(int nSurface, int nType);
 
 HLL_LIBRARY(DrawField,
-	    HLL_TODO_EXPORT(Init, DrawField_Init),
-	    HLL_TODO_EXPORT(Release, DrawField_Release),
-	    HLL_TODO_EXPORT(SetDrawFlag, DrawField_SetDrawFlag),
-	    HLL_TODO_EXPORT(GetDrawFlag, DrawField_GetDrawFlag),
-	    HLL_TODO_EXPORT(LoadFromFile, DrawField_LoadFromFile),
-	    HLL_TODO_EXPORT(LoadTexture, DrawField_LoadTexture),
+	    HLL_EXPORT(Init, DrawField_Init),
+	    HLL_EXPORT(Release, DrawField_Release),
+	    HLL_EXPORT(SetDrawFlag, DrawField_SetDrawFlag),
+	    HLL_EXPORT(GetDrawFlag, DrawField_GetDrawFlag),
+	    HLL_EXPORT(LoadFromFile, DrawField_LoadFromFile),
+	    HLL_EXPORT(LoadTexture, DrawField_LoadTexture),
 	    HLL_TODO_EXPORT(LoadEventTexture, DrawField_LoadEventTexture),
 	    HLL_TODO_EXPORT(BeginLoad, DrawField_BeginLoad),
 	    HLL_TODO_EXPORT(IsLoadEnd, DrawField_IsLoadEnd),
@@ -220,49 +357,49 @@ HLL_LIBRARY(DrawField,
 	    HLL_TODO_EXPORT(IsLoadTextureSucceeded, DrawField_IsLoadTextureSucceeded),
 	    HLL_TODO_EXPORT(UpdateTexture, DrawField_UpdateTexture),
 	    HLL_TODO_EXPORT(SetCamera, DrawField_SetCamera),
-	    HLL_TODO_EXPORT(GetMapX, DrawField_GetMapX),
-	    HLL_TODO_EXPORT(GetMapY, DrawField_GetMapY),
-	    HLL_TODO_EXPORT(GetMapZ, DrawField_GetMapZ),
-	    HLL_TODO_EXPORT(IsInMap, DrawField_IsInMap),
-	    HLL_TODO_EXPORT(IsFloor, DrawField_IsFloor),
-	    HLL_TODO_EXPORT(IsStair, DrawField_IsStair),
-	    HLL_TODO_EXPORT(IsStairN, DrawField_IsStairN),
-	    HLL_TODO_EXPORT(IsStairW, DrawField_IsStairW),
-	    HLL_TODO_EXPORT(IsStairS, DrawField_IsStairS),
-	    HLL_TODO_EXPORT(IsStairE, DrawField_IsStairE),
-	    HLL_TODO_EXPORT(IsWallN, DrawField_IsWallN),
-	    HLL_TODO_EXPORT(IsWallW, DrawField_IsWallW),
-	    HLL_TODO_EXPORT(IsWallS, DrawField_IsWallS),
-	    HLL_TODO_EXPORT(IsWallE, DrawField_IsWallE),
-	    HLL_TODO_EXPORT(IsDoorN, DrawField_IsDoorN),
-	    HLL_TODO_EXPORT(IsDoorW, DrawField_IsDoorW),
-	    HLL_TODO_EXPORT(IsDoorS, DrawField_IsDoorS),
-	    HLL_TODO_EXPORT(IsDoorE, DrawField_IsDoorE),
-	    HLL_TODO_EXPORT(IsEnter, DrawField_IsEnter),
-	    HLL_TODO_EXPORT(IsEnterN, DrawField_IsEnterN),
-	    HLL_TODO_EXPORT(IsEnterW, DrawField_IsEnterW),
-	    HLL_TODO_EXPORT(IsEnterS, DrawField_IsEnterS),
-	    HLL_TODO_EXPORT(IsEnterE, DrawField_IsEnterE),
-	    HLL_TODO_EXPORT(GetEvFloor, DrawField_GetEvFloor),
-	    HLL_TODO_EXPORT(GetEvWallN, DrawField_GetEvWallN),
-	    HLL_TODO_EXPORT(GetEvWallW, DrawField_GetEvWallW),
-	    HLL_TODO_EXPORT(GetEvWallS, DrawField_GetEvWallS),
-	    HLL_TODO_EXPORT(GetEvWallE, DrawField_GetEvWallE),
-	    HLL_TODO_EXPORT(GetEvFloor2, DrawField_GetEvFloor2),
-	    HLL_TODO_EXPORT(GetEvWallN2, DrawField_GetEvWallN2),
-	    HLL_TODO_EXPORT(GetEvWallW2, DrawField_GetEvWallW2),
-	    HLL_TODO_EXPORT(GetEvWallS2, DrawField_GetEvWallS2),
-	    HLL_TODO_EXPORT(GetEvWallE2, DrawField_GetEvWallE2),
-	    HLL_TODO_EXPORT(GetTexFloor, DrawField_GetTexFloor),
-	    HLL_TODO_EXPORT(GetTexCeiling, DrawField_GetTexCeiling),
-	    HLL_TODO_EXPORT(GetTexWallN, DrawField_GetTexWallN),
-	    HLL_TODO_EXPORT(GetTexWallW, DrawField_GetTexWallW),
-	    HLL_TODO_EXPORT(GetTexWallS, DrawField_GetTexWallS),
-	    HLL_TODO_EXPORT(GetTexWallE, DrawField_GetTexWallE),
-	    HLL_TODO_EXPORT(GetTexDoorN, DrawField_GetTexDoorN),
-	    HLL_TODO_EXPORT(GetTexDoorW, DrawField_GetTexDoorW),
-	    HLL_TODO_EXPORT(GetTexDoorS, DrawField_GetTexDoorS),
-	    HLL_TODO_EXPORT(GetTexDoorE, DrawField_GetTexDoorE),
+	    HLL_EXPORT(GetMapX, DrawField_GetMapX),
+	    HLL_EXPORT(GetMapY, DrawField_GetMapY),
+	    HLL_EXPORT(GetMapZ, DrawField_GetMapZ),
+	    HLL_EXPORT(IsInMap, DrawField_IsInMap),
+	    HLL_EXPORT(IsFloor, DrawField_IsFloor),
+	    HLL_EXPORT(IsStair, DrawField_IsStair),
+	    HLL_EXPORT(IsStairN, DrawField_IsStairN),
+	    HLL_EXPORT(IsStairW, DrawField_IsStairW),
+	    HLL_EXPORT(IsStairS, DrawField_IsStairS),
+	    HLL_EXPORT(IsStairE, DrawField_IsStairE),
+	    HLL_EXPORT(IsWallN, DrawField_IsWallN),
+	    HLL_EXPORT(IsWallW, DrawField_IsWallW),
+	    HLL_EXPORT(IsWallS, DrawField_IsWallS),
+	    HLL_EXPORT(IsWallE, DrawField_IsWallE),
+	    HLL_EXPORT(IsDoorN, DrawField_IsDoorN),
+	    HLL_EXPORT(IsDoorW, DrawField_IsDoorW),
+	    HLL_EXPORT(IsDoorS, DrawField_IsDoorS),
+	    HLL_EXPORT(IsDoorE, DrawField_IsDoorE),
+	    HLL_EXPORT(IsEnter, DrawField_IsEnter),
+	    HLL_EXPORT(IsEnterN, DrawField_IsEnterN),
+	    HLL_EXPORT(IsEnterW, DrawField_IsEnterW),
+	    HLL_EXPORT(IsEnterS, DrawField_IsEnterS),
+	    HLL_EXPORT(IsEnterE, DrawField_IsEnterE),
+	    HLL_EXPORT(GetEvFloor, DrawField_GetEvFloor),
+	    HLL_EXPORT(GetEvWallN, DrawField_GetEvWallN),
+	    HLL_EXPORT(GetEvWallW, DrawField_GetEvWallW),
+	    HLL_EXPORT(GetEvWallS, DrawField_GetEvWallS),
+	    HLL_EXPORT(GetEvWallE, DrawField_GetEvWallE),
+	    HLL_EXPORT(GetEvFloor2, DrawField_GetEvFloor2),
+	    HLL_EXPORT(GetEvWallN2, DrawField_GetEvWallN2),
+	    HLL_EXPORT(GetEvWallW2, DrawField_GetEvWallW2),
+	    HLL_EXPORT(GetEvWallS2, DrawField_GetEvWallS2),
+	    HLL_EXPORT(GetEvWallE2, DrawField_GetEvWallE2),
+	    HLL_EXPORT(GetTexFloor, DrawField_GetTexFloor),
+	    HLL_EXPORT(GetTexCeiling, DrawField_GetTexCeiling),
+	    HLL_EXPORT(GetTexWallN, DrawField_GetTexWallN),
+	    HLL_EXPORT(GetTexWallW, DrawField_GetTexWallW),
+	    HLL_EXPORT(GetTexWallS, DrawField_GetTexWallS),
+	    HLL_EXPORT(GetTexWallE, DrawField_GetTexWallE),
+	    HLL_EXPORT(GetTexDoorN, DrawField_GetTexDoorN),
+	    HLL_EXPORT(GetTexDoorW, DrawField_GetTexDoorW),
+	    HLL_EXPORT(GetTexDoorS, DrawField_GetTexDoorS),
+	    HLL_EXPORT(GetTexDoorE, DrawField_GetTexDoorE),
 	    HLL_TODO_EXPORT(GetDoorNAngle, DrawField_GetDoorNAngle),
 	    HLL_TODO_EXPORT(GetDoorWAngle, DrawField_GetDoorWAngle),
 	    HLL_TODO_EXPORT(GetDoorSAngle, DrawField_GetDoorSAngle),
@@ -271,41 +408,41 @@ HLL_LIBRARY(DrawField,
 	    HLL_TODO_EXPORT(SetDoorWAngle, DrawField_SetDoorWAngle),
 	    HLL_TODO_EXPORT(SetDoorSAngle, DrawField_SetDoorSAngle),
 	    HLL_TODO_EXPORT(SetDoorEAngle, DrawField_SetDoorEAngle),
-	    HLL_TODO_EXPORT(SetEvFloor, DrawField_SetEvFloor),
-	    HLL_TODO_EXPORT(SetEvWallN, DrawField_SetEvWallN),
-	    HLL_TODO_EXPORT(SetEvWallW, DrawField_SetEvWallW),
-	    HLL_TODO_EXPORT(SetEvWallS, DrawField_SetEvWallS),
-	    HLL_TODO_EXPORT(SetEvWallE, DrawField_SetEvWallE),
-	    HLL_TODO_EXPORT(SetEvFloor2, DrawField_SetEvFloor2),
-	    HLL_TODO_EXPORT(SetEvWallN2, DrawField_SetEvWallN2),
-	    HLL_TODO_EXPORT(SetEvWallW2, DrawField_SetEvWallW2),
-	    HLL_TODO_EXPORT(SetEvWallS2, DrawField_SetEvWallS2),
-	    HLL_TODO_EXPORT(SetEvWallE2, DrawField_SetEvWallE2),
+	    HLL_EXPORT(SetEvFloor, DrawField_SetEvFloor),
+	    HLL_EXPORT(SetEvWallN, DrawField_SetEvWallN),
+	    HLL_EXPORT(SetEvWallW, DrawField_SetEvWallW),
+	    HLL_EXPORT(SetEvWallS, DrawField_SetEvWallS),
+	    HLL_EXPORT(SetEvWallE, DrawField_SetEvWallE),
+	    HLL_EXPORT(SetEvFloor2, DrawField_SetEvFloor2),
+	    HLL_EXPORT(SetEvWallN2, DrawField_SetEvWallN2),
+	    HLL_EXPORT(SetEvWallW2, DrawField_SetEvWallW2),
+	    HLL_EXPORT(SetEvWallS2, DrawField_SetEvWallS2),
+	    HLL_EXPORT(SetEvWallE2, DrawField_SetEvWallE2),
 	    HLL_TODO_EXPORT(SetEvMag, DrawField_SetEvMag),
-	    HLL_TODO_EXPORT(SetEvRate, DrawField_SetEvRate),
-	    HLL_TODO_EXPORT(SetEnter, DrawField_SetEnter),
-	    HLL_TODO_EXPORT(SetEnterN, DrawField_SetEnterN),
-	    HLL_TODO_EXPORT(SetEnterW, DrawField_SetEnterW),
-	    HLL_TODO_EXPORT(SetEnterS, DrawField_SetEnterS),
-	    HLL_TODO_EXPORT(SetEnterE, DrawField_SetEnterE),
-	    HLL_TODO_EXPORT(SetDoorNLock, DrawField_SetDoorNLock),
-	    HLL_TODO_EXPORT(SetDoorWLock, DrawField_SetDoorWLock),
-	    HLL_TODO_EXPORT(SetDoorSLock, DrawField_SetDoorSLock),
-	    HLL_TODO_EXPORT(SetDoorELock, DrawField_SetDoorELock),
+	    HLL_EXPORT(SetEvRate, DrawField_SetEvRate),
+	    HLL_EXPORT(SetEnter, DrawField_SetEnter),
+	    HLL_EXPORT(SetEnterN, DrawField_SetEnterN),
+	    HLL_EXPORT(SetEnterW, DrawField_SetEnterW),
+	    HLL_EXPORT(SetEnterS, DrawField_SetEnterS),
+	    HLL_EXPORT(SetEnterE, DrawField_SetEnterE),
+	    HLL_EXPORT(SetDoorNLock, DrawField_SetDoorNLock),
+	    HLL_EXPORT(SetDoorWLock, DrawField_SetDoorWLock),
+	    HLL_EXPORT(SetDoorSLock, DrawField_SetDoorSLock),
+	    HLL_EXPORT(SetDoorELock, DrawField_SetDoorELock),
 	    HLL_TODO_EXPORT(GetDoorNLock, DrawField_GetDoorNLock),
 	    HLL_TODO_EXPORT(GetDoorWLock, DrawField_GetDoorWLock),
 	    HLL_TODO_EXPORT(GetDoorSLock, DrawField_GetDoorSLock),
 	    HLL_TODO_EXPORT(GetDoorELock, DrawField_GetDoorELock),
-	    HLL_TODO_EXPORT(SetTexFloor, DrawField_SetTexFloor),
-	    HLL_TODO_EXPORT(SetTexCeiling, DrawField_SetTexCeiling),
-	    HLL_TODO_EXPORT(SetTexWallN, DrawField_SetTexWallN),
-	    HLL_TODO_EXPORT(SetTexWallW, DrawField_SetTexWallW),
-	    HLL_TODO_EXPORT(SetTexWallS, DrawField_SetTexWallS),
-	    HLL_TODO_EXPORT(SetTexWallE, DrawField_SetTexWallE),
-	    HLL_TODO_EXPORT(SetTexDoorN, DrawField_SetTexDoorN),
-	    HLL_TODO_EXPORT(SetTexDoorW, DrawField_SetTexDoorW),
-	    HLL_TODO_EXPORT(SetTexDoorS, DrawField_SetTexDoorS),
-	    HLL_TODO_EXPORT(SetTexDoorE, DrawField_SetTexDoorE),
+	    HLL_EXPORT(SetTexFloor, DrawField_SetTexFloor),
+	    HLL_EXPORT(SetTexCeiling, DrawField_SetTexCeiling),
+	    HLL_EXPORT(SetTexWallN, DrawField_SetTexWallN),
+	    HLL_EXPORT(SetTexWallW, DrawField_SetTexWallW),
+	    HLL_EXPORT(SetTexWallS, DrawField_SetTexWallS),
+	    HLL_EXPORT(SetTexWallE, DrawField_SetTexWallE),
+	    HLL_EXPORT(SetTexDoorN, DrawField_SetTexDoorN),
+	    HLL_EXPORT(SetTexDoorW, DrawField_SetTexDoorW),
+	    HLL_EXPORT(SetTexDoorS, DrawField_SetTexDoorS),
+	    HLL_EXPORT(SetTexDoorE, DrawField_SetTexDoorE),
 	    HLL_TODO_EXPORT(SetTexStair, DrawField_SetTexStair),
 	    HLL_TODO_EXPORT(SetShadowTexFloor, DrawField_SetShadowTexFloor),
 	    HLL_TODO_EXPORT(SetShadowTexCeiling, DrawField_SetShadowTexCeiling),
@@ -324,8 +461,8 @@ HLL_LIBRARY(DrawField,
 	    HLL_TODO_EXPORT(DrawLMap, DrawField_DrawLMap),
 	    HLL_TODO_EXPORT(SetMapCG, DrawField_SetMapCG),
 	    HLL_TODO_EXPORT(SetDrawLMapFloor, DrawField_SetDrawLMapFloor),
-	    HLL_TODO_EXPORT(SetPlayerPos, DrawField_SetPlayerPos),
-	    HLL_TODO_EXPORT(SetWalked, DrawField_SetWalked),
+	    HLL_EXPORT(SetPlayerPos, DrawField_SetPlayerPos),
+	    HLL_EXPORT(SetWalked, dungeon_set_walked),
 	    HLL_TODO_EXPORT(SetLooked, DrawField_SetLooked),
 	    HLL_TODO_EXPORT(SetHideDrawMapFloor, DrawField_SetHideDrawMapFloor),
 	    HLL_TODO_EXPORT(SetHideDrawMapWall, DrawField_SetHideDrawMapWall),
@@ -335,7 +472,7 @@ HLL_LIBRARY(DrawField,
 	    HLL_TODO_EXPORT(SetDirect3DMode, DrawField_SetDirect3DMode),
 	    HLL_TODO_EXPORT(GetDirect3DMode, DrawField_GetDirect3DMode),
 	    HLL_TODO_EXPORT(SaveDrawSettingFlag, DrawField_SaveDrawSettingFlag),
-	    HLL_TODO_EXPORT(SetPerspective, DrawField_SetPerspective),
+	    HLL_EXPORT(SetPerspective, DrawField_SetPerspective),
 	    HLL_TODO_EXPORT(SetDrawShadowMap, DrawField_SetDrawShadowMap),
 	    HLL_TODO_EXPORT(CalcNumofFloor, DrawField_CalcNumofFloor),
 	    HLL_TODO_EXPORT(CalcNumofWalk, DrawField_CalcNumofWalk),
@@ -348,14 +485,14 @@ HLL_LIBRARY(DrawField,
 	    HLL_TODO_EXPORT(Atan2, DrawField_Atan2),
 	    HLL_TODO_EXPORT(TransPos2DToPos3DOnPlane, DrawField_TransPos2DToPos3DOnPlane),
 	    HLL_TODO_EXPORT(TransPos3DToPos2D, DrawField_TransPos3DToPos2D),
-	    HLL_TODO_EXPORT(GetCharaNumMax, DrawField_GetCharaNumMax),
-	    HLL_TODO_EXPORT(SetCharaSprite, DrawField_SetCharaSprite),
-	    HLL_TODO_EXPORT(SetCharaPos, DrawField_SetCharaPos),
-	    HLL_TODO_EXPORT(SetCharaCG, DrawField_SetCharaCG),
-	    HLL_TODO_EXPORT(SetCharaCGInfo, DrawField_SetCharaCGInfo),
+	    HLL_EXPORT(GetCharaNumMax, DrawField_GetCharaNumMax),
+	    HLL_EXPORT(SetCharaSprite, DrawField_SetCharaSprite),
+	    HLL_EXPORT(SetCharaPos, DrawField_SetCharaPos),
+	    HLL_EXPORT(SetCharaCG, DrawField_SetCharaCG),
+	    HLL_EXPORT(SetCharaCGInfo, DrawField_SetCharaCGInfo),
 	    HLL_TODO_EXPORT(SetCharaZBias, DrawField_SetCharaZBias),
-	    HLL_TODO_EXPORT(SetCharaShow, DrawField_SetCharaShow),
-	    HLL_TODO_EXPORT(SetCenterOffsetY, DrawField_SetCenterOffsetY),
+	    HLL_EXPORT(SetCharaShow, DrawField_SetCharaShow),
+	    HLL_EXPORT(SetCenterOffsetY, DrawField_SetCenterOffsetY),
 	    HLL_TODO_EXPORT(SetBuilBoard, DrawField_SetBuilBoard),
 	    HLL_TODO_EXPORT(SetSphereTheta, DrawField_SetSphereTheta),
 	    HLL_TODO_EXPORT(SetSphereColor, DrawField_SetSphereColor),

@@ -45,7 +45,9 @@
 #define M_PI (3.14159265358979323846)
 #endif
 
-struct dungeon_context *dungeon_context_create(enum draw_dungeon_version version, int surface)
+struct dungeon_context *current_context = NULL;
+
+static struct dungeon_context *dungeon_context_create(enum draw_dungeon_version version, int surface)
 {
 	struct dungeon_context *ctx = xcalloc(1, sizeof(struct dungeon_context));
 	ctx->version = version;
@@ -66,7 +68,7 @@ struct dungeon_context *dungeon_context_create(enum draw_dungeon_version version
 	return ctx;
 }
 
-void dungeon_context_free(struct dungeon_context *ctx)
+static void dungeon_context_free(struct dungeon_context *ctx)
 {
 	if (ctx->dgn)
 		dgn_free(ctx->dgn);
@@ -83,6 +85,39 @@ void dungeon_context_free(struct dungeon_context *ctx)
 		dungeon_map_free(ctx->map);
 
 	free(ctx);
+}
+
+
+int dungeon_init(enum draw_dungeon_version version, int surface)
+{
+	if (current_context)
+		VM_ERROR("Dungeon is already associated with surface %d", current_context->surface);
+	if (surface < 0)
+		return 0;
+
+	current_context = dungeon_context_create(version, surface);
+	return 1;
+}
+
+void dungeon_fini(void)
+{
+	if (current_context) {
+		dungeon_context_free(current_context);
+		current_context = NULL;
+	}
+}
+
+struct dungeon_context *dungeon_get_context(int surface)
+{
+	if (!current_context || surface != current_context->surface)
+		return NULL;
+	return current_context;
+}
+
+void dungeon_update(void)
+{
+	if (current_context && current_context->loaded && current_context->draw_enabled)
+		dungeon_render(current_context);
 }
 
 static GLuint *load_event_textures(int *nr_textures_out)
@@ -218,6 +253,38 @@ bool dungeon_load(struct dungeon_context *ctx, int num)
 	dungeon_map_init(ctx);
 
 	ctx->loaded = true;
+	return true;
+}
+
+bool dungeon_load_dungeon(struct dungeon_context *ctx, const char *filename, int num)
+{
+	char *path = gamedir_path(filename);
+	size_t len;
+	uint8_t *dgn = file_read(path, &len);
+	if (!dgn) {
+		WARNING("Cannot load %s", path);
+		free(path);
+		return false;
+	}
+	free(path);
+	ctx->dgn = dgn_parse(dgn, len);
+	free(dgn);
+	return true;
+}
+
+bool dungeon_load_texture(struct dungeon_context *ctx, const char *filename)
+{
+	char *path = gamedir_path(filename);
+	size_t len;
+	uint8_t *dtx = file_read(path, &len);
+	if (!dtx) {
+		WARNING("Cannot load %s", path);
+		free(path);
+		return false;
+	}
+	free(path);
+	ctx->dtx = dtx_parse(dtx, len);
+	free(dtx);
 	return true;
 }
 

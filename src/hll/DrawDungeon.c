@@ -27,31 +27,6 @@
 #include "dungeon/tes.h"
 #include "hll.h"
 
-static struct dungeon_context *current_context = NULL;
-
-static int dungeon_init(enum draw_dungeon_version version, int surface)
-{
-	if (current_context)
-		VM_ERROR("Dungeon is already associated with surface %d", current_context->surface);
-	if (surface < 0)
-		return 0;
-	current_context = dungeon_context_create(version, surface);
-	return 1;
-}
-
-struct dungeon_context *dungeon_get_context(int surface)
-{
-	if (!current_context || surface != current_context->surface)
-		return NULL;
-	return current_context;
-}
-
-void dungeon_update(void)
-{
-	if (current_context && current_context->loaded && current_context->draw_enabled)
-		dungeon_render(current_context);
-}
-
 static struct dgn_cell *dungeon_get_cell(int surface, int x, int y, int z)
 {
 	struct dungeon_context *ctx = dungeon_get_context(surface);
@@ -62,10 +37,7 @@ static struct dgn_cell *dungeon_get_cell(int surface, int x, int y, int z)
 
 static void DrawDungeon_ModuleFini(void)
 {
-	if (current_context) {
-		dungeon_context_free(current_context);
-		current_context = NULL;
-	}
+	dungeon_fini();
 }
 
 static int DrawDungeon_Init(int surface)
@@ -83,8 +55,7 @@ static void DrawDungeon_Release(int surface)
 	struct dungeon_context *ctx = dungeon_get_context(surface);
 	if (!ctx)
 		return;
-	dungeon_context_free(ctx);
-	current_context = NULL;
+	dungeon_fini();
 }
 
 static void DrawDungeon_SetDrawFlag(int surface, int flag)

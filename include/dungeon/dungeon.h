@@ -32,7 +32,8 @@ struct dungeon_map;
 enum draw_dungeon_version {
 	DRAW_DUNGEON_1,    // Rance VI
 	// DRAW_DUNGEON_2, // Dungeons & Dolls
-	DRAW_DUNGEON_14    // GALZOO Island
+	DRAW_DUNGEON_14,   // GALZOO Island
+	DRAW_FIELD         // Pastel Chime Continue
 };
 
 struct camera {
@@ -64,9 +65,13 @@ struct dungeon_context {
 	GLuint depth_buffer;
 };
 
-struct dungeon_context *dungeon_context_create(enum draw_dungeon_version version, int surface);
-void dungeon_context_free(struct dungeon_context *ctx);
+int dungeon_init(enum draw_dungeon_version version, int surface);
+void dungeon_fini(void);
+struct dungeon_context *dungeon_get_context(int surface);
+void dungeon_update(void);
 bool dungeon_load(struct dungeon_context *ctx, int num);
+bool dungeon_load_dungeon(struct dungeon_context *ctx, const char *filename, int num);
+bool dungeon_load_texture(struct dungeon_context *ctx, const char *filename);
 void dungeon_set_camera(int surface, float x, float y, float z, float angle, float angle_p);
 void dungeon_render(struct dungeon_context *ctx);
 void dungeon_set_walked(int surface, int x, int y, int z, int flag);
@@ -74,8 +79,5 @@ int dungeon_get_walked(int surface, int x, int y, int z);
 int dungeon_calc_conquer(int surface);
 bool dungeon_load_walk_data(int surface, int map, struct page **page);
 bool dungeon_save_walk_data(int surface, int map, struct page **page);
-
-struct dungeon_context *dungeon_get_context(int surface);
-void dungeon_update(void);
 
 #endif /* SYSTEM4_DUNGEON_H */

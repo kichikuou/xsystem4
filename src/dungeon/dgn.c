@@ -32,7 +32,7 @@ struct dgn *dgn_parse(uint8_t *data, size_t size)
 
 	struct dgn *dgn = xcalloc(1, sizeof(struct dgn));
 	dgn->version = buffer_read_int32(&r);
-	if (dgn->version != DGN_VER_RANCE6 && dgn->version != DGN_VER_GALZOO) {
+	if (dgn->version != DGN_VER_RANCE6 && dgn->version != DGN_VER_GALZOO && dgn->version != 8) {
 		WARNING("unknown DGN version: %d", dgn->version);
 		free(dgn);
 		return NULL;
@@ -87,6 +87,8 @@ struct dgn *dgn_parse(uint8_t *data, size_t size)
 			buffer_skip(&r, 4);
 			buffer_skip(&r, strlen(buffer_strdata(&r)) + 1);
 		}
+		if (dgn->version == 8)
+			continue;
 		buffer_skip(&r, 4);
 		cell->battle_background = buffer_read_int32(&r);
 		if (dgn->version != DGN_VER_GALZOO) {
@@ -110,39 +112,42 @@ struct dgn *dgn_parse(uint8_t *data, size_t size)
 		cell->roof_underside_texture = buffer_read_int32(&r);
 		buffer_skip(&r, 4);
 	}
-	if (buffer_read_u8(&r) != 0 || buffer_read_int32(&r) != 1) {
+	if (buffer_read_u8(&r) != 0) {
 		dgn_free(dgn);
 		return NULL;
 	}
-	dgn->pvs = xcalloc(nr_cells, sizeof(struct packed_pvs));
-	for (int i = 0; i < nr_cells; i++) {
-		struct packed_pvs *pvs = &dgn->pvs[i];
-		int32_t len = buffer_read_int32(&r);
-		if (len % 8 != 4) {
-			WARNING("dgn_parse: unexpected PVS length");
-			dgn_free(dgn);
-			return NULL;
-		}
-		if (buffer_read_int32(&r) != nr_cells) {
-			WARNING("dgn_parse: bad PVS");
-			dgn_free(dgn);
-			return NULL;
-		}
-		pvs->nr_run_lengths = (len - 4) / 8;
-		pvs->run_lengths = xmalloc(pvs->nr_run_lengths * sizeof(struct pvs_run_lengths));
-		int32_t total = 0;
-		for (int j = 0; j < pvs->nr_run_lengths; j++) {
-			int32_t invisible = buffer_read_int32(&r);
-			int32_t visible = buffer_read_int32(&r);
-			pvs->run_lengths[j].invisible_cells = invisible;
-			pvs->run_lengths[j].visible_cells = visible;
-			pvs->nr_visible_cells += visible;
-			total += invisible + visible;
-		}
-		if (total != nr_cells) {
-			WARNING("dgn_parse: bad PVS");
-			dgn_free(dgn);
-			return NULL;
+	int has_pvs = buffer_read_int32(&r);
+	if (has_pvs) {
+		dgn->pvs = xcalloc(nr_cells, sizeof(struct packed_pvs));
+		for (int i = 0; i < nr_cells; i++) {
+			struct packed_pvs *pvs = &dgn->pvs[i];
+			int32_t len = buffer_read_int32(&r);
+			if (len % 8 != 4) {
+				WARNING("dgn_parse: unexpected PVS length");
+				dgn_free(dgn);
+				return NULL;
+			}
+			if (buffer_read_int32(&r) != nr_cells) {
+				WARNING("dgn_parse: bad PVS");
+				dgn_free(dgn);
+				return NULL;
+			}
+			pvs->nr_run_lengths = (len - 4) / 8;
+			pvs->run_lengths = xmalloc(pvs->nr_run_lengths * sizeof(struct pvs_run_lengths));
+			int32_t total = 0;
+			for (int j = 0; j < pvs->nr_run_lengths; j++) {
+				int32_t invisible = buffer_read_int32(&r);
+				int32_t visible = buffer_read_int32(&r);
+				pvs->run_lengths[j].invisible_cells = invisible;
+				pvs->run_lengths[j].visible_cells = visible;
+				pvs->nr_visible_cells += visible;
+				total += invisible + visible;
+			}
+			if (total != nr_cells) {
+				WARNING("dgn_parse: bad PVS");
+				dgn_free(dgn);
+				return NULL;
+			}
 		}
 	}
 	return dgn;

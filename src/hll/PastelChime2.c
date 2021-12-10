@@ -28,11 +28,11 @@
 HLL_WARN_UNIMPLEMENTED(true, bool, PastelChime2, InitPastelChime2);
 //bool PastelChime2_DungeonDataSave(int nID, struct page **aDungeon);
 //bool PastelChime2_DungeonDataLoad(int nID, struct page **aDungeon);
-//bool PastelChime2_DungeonDataExist(int nID);
+HLL_WARN_UNIMPLEMENTED(false, bool, PastelChime2, DungeonDataExist, int nID);
 HLL_WARN_UNIMPLEMENTED(false, bool, PastelChime2, DungeonDataToSaveData, int nSaveDataIndex);
 HLL_WARN_UNIMPLEMENTED(false, bool, PastelChime2, DungeonDataFromSaveData, int nSaveDataIndex);
-//bool PastelChime2_Field_SetSprite(int nDrawFieldSpriteNumber);
-//void PastelChime2_Field_GetDoors(struct page **dst, int nFloor);
+HLL_WARN_UNIMPLEMENTED(true, bool, PastelChime2, Field_SetSprite, int nDrawFieldSpriteNumber);
+HLL_WARN_UNIMPLEMENTED( , void, PastelChime2, Field_GetDoors, struct page **dst, int nFloor);
 //void PastelChime2_Field_UpdateDoorNamePlate(struct page **doors, struct page *fxyzPlayer, bool bWalking, int nFloor, float fBlockSize, struct page **rcField, struct page **posMouse);
 //void PastelChime2_Field_UpdateObjectNamePlate(struct page **aDungeon, float fEnemyRange, float fTreasureRange, float fTrapRange, float fDefaultRange);
 //bool PastelChime2_Field_QuerySelectedObjectPlate(struct page **result, struct page **posMouse, struct page **aDungeon);
@@ -41,10 +41,10 @@ HLL_WARN_UNIMPLEMENTED(false, bool, PastelChime2, DungeonDataFromSaveData, int n
 //void PastelChime2_Field_CheckObjectHit(struct page **aChangeList, struct page **aDungeon);
 //void PastelChime2_Field_UpdateObjectAnime(int nTotalTime, struct page **aDungeon);
 //float PastelChime2_Field_CalcY(float x, float z, int nFloor, float fBlockSize);
-//void PastelChime2_Field_CalcCamera(float x, float y, float z, float deg, float pitch, float length);
+HLL_WARN_UNIMPLEMENTED( , void, PastelChime2, Field_CalcCamera, float x, float y, float z, float deg, float pitch, float length);
 //bool PastelChime2_Field_CheckLook(float px, float py, float qx, float qy, int nFloor, float fBlockSize);
 //bool PastelChime2_Field_CalcMove(float *fposNewx, float *fposNewy, float fposOldx, float fposOldy, float fMapDeltaX, float fMapDeltaY, float fR, float delta_time, float fWalkStep, int nFloor, float fBlockSize, bool bCheckDoor);
-//void PastelChime2_Field_UpdatePlayersUnit(float fxyzPlayer1x, float fxyzPlayer1y, float fxyzPlayer1z, int nCharaPlayer1, float *fxyzPlayer2x, float *fxyzPlayer2y, float *fxyzPlayer2z, int nCharaPlayer2, float *fxyzPlayer3x, float *fxyzPlayer3y, float *fxyzPlayer3z, int nCharaPlayer3, int nCgIndexPlayer1, bool bWalking);
+HLL_WARN_UNIMPLEMENTED( , void, PastelChime2, Field_UpdatePlayersUnit, float fxyzPlayer1x, float fxyzPlayer1y, float fxyzPlayer1z, int nCharaPlayer1, float *fxyzPlayer2x, float *fxyzPlayer2y, float *fxyzPlayer2z, int nCharaPlayer2, float *fxyzPlayer3x, float *fxyzPlayer3y, float *fxyzPlayer3z, int nCharaPlayer3, int nCgIndexPlayer1, bool bWalking);
 //void PastelChime2_Field_ClearPlayerMoveQueue(void);
 //bool PastelChime2_JudgeHitWall(float fposOldx, float fposOldy, float fposNewx, float fposNewy, float fR, float *fposHitx, float *fposHity, float *lineHitpx, float *lineHitpy, float *lineHitqx, float *lineHitqy, float walllpx, float walllpy, float walllqx, float walllqy, bool wallb);
 //bool PastelChime2_AdjustMovePos(float *fposNewx, float *fposNewy, float fposOldx, float fposOldy, float lineWpx, float lineWpy, float lineWqx, float lineWqy);
@@ -76,7 +76,7 @@ static void PastelChime2_str_erase_found(struct string **s, struct string **key)
 	free(buf);
 }
 
-//bool PastelChime2_Field_PickUpRoadShape(struct page **a4, struct page **a3, struct page **a2, struct page **a1, struct page **a0, struct page **ac, int nFloor);
+HLL_WARN_UNIMPLEMENTED(false, bool, PastelChime2, Field_PickUpRoadShape, struct page **a4, struct page **a3, struct page **a2, struct page **a1, struct page **a0, struct page **ac, int nFloor);
 //void PastelChime2_SaveMapPicture(struct string *sFileName);
 //bool PastelChime2_ShellOpen(struct string *sFileName);
 //bool PastelChime2_File_GetTime(struct string *strFileName, int *nYear, int *nMonth, int *nDayOfWeek, int *nDay, int *nHour, int *nMinute, int *nSecond, int *nMilliseconds);
@@ -143,11 +143,11 @@ HLL_LIBRARY(PastelChime2,
 	    HLL_EXPORT(InitPastelChime2, PastelChime2_InitPastelChime2),
 	    HLL_TODO_EXPORT(DungeonDataSave, PastelChime2_DungeonDataSave),
 	    HLL_TODO_EXPORT(DungeonDataLoad, PastelChime2_DungeonDataLoad),
-	    HLL_TODO_EXPORT(DungeonDataExist, PastelChime2_DungeonDataExist),
+	    HLL_EXPORT(DungeonDataExist, PastelChime2_DungeonDataExist),
 	    HLL_EXPORT(DungeonDataToSaveData, PastelChime2_DungeonDataToSaveData),
 	    HLL_EXPORT(DungeonDataFromSaveData, PastelChime2_DungeonDataFromSaveData),
-	    HLL_TODO_EXPORT(Field_SetSprite, PastelChime2_Field_SetSprite),
-	    HLL_TODO_EXPORT(Field_GetDoors, PastelChime2_Field_GetDoors),
+	    HLL_EXPORT(Field_SetSprite, PastelChime2_Field_SetSprite),
+	    HLL_EXPORT(Field_GetDoors, PastelChime2_Field_GetDoors),
 	    HLL_TODO_EXPORT(Field_UpdateDoorNamePlate, PastelChime2_Field_UpdateDoorNamePlate),
 	    HLL_TODO_EXPORT(Field_UpdateObjectNamePlate, PastelChime2_Field_UpdateObjectNamePlate),
 	    HLL_TODO_EXPORT(Field_QuerySelectedObjectPlate, PastelChime2_Field_QuerySelectedObjectPlate),
@@ -156,10 +156,10 @@ HLL_LIBRARY(PastelChime2,
 	    HLL_TODO_EXPORT(Field_CheckObjectHit, PastelChime2_Field_CheckObjectHit),
 	    HLL_TODO_EXPORT(Field_UpdateObjectAnime, PastelChime2_Field_UpdateObjectAnime),
 	    HLL_TODO_EXPORT(Field_CalcY, PastelChime2_Field_CalcY),
-	    HLL_TODO_EXPORT(Field_CalcCamera, PastelChime2_Field_CalcCamera),
+	    HLL_EXPORT(Field_CalcCamera, PastelChime2_Field_CalcCamera),
 	    HLL_TODO_EXPORT(Field_CheckLook, PastelChime2_Field_CheckLook),
 	    HLL_TODO_EXPORT(Field_CalcMove, PastelChime2_Field_CalcMove),
-	    HLL_TODO_EXPORT(Field_UpdatePlayersUnit, PastelChime2_Field_UpdatePlayersUnit),
+	    HLL_EXPORT(Field_UpdatePlayersUnit, PastelChime2_Field_UpdatePlayersUnit),
 	    HLL_TODO_EXPORT(Field_ClearPlayerMoveQueue, PastelChime2_Field_ClearPlayerMoveQueue),
 	    HLL_TODO_EXPORT(JudgeHitWall, PastelChime2_JudgeHitWall),
 	    HLL_TODO_EXPORT(AdjustMovePos, PastelChime2_AdjustMovePos),
@@ -169,7 +169,7 @@ HLL_LIBRARY(PastelChime2,
 	    HLL_TODO_EXPORT(AutoDungeonE_Create, PastelChime2_AutoDungeonE_Create),
 	    HLL_TODO_EXPORT(TestVMArray, PastelChime2_TestVMArray),
 	    HLL_EXPORT(str_erase_found, PastelChime2_str_erase_found),
-	    HLL_TODO_EXPORT(Field_PickUpRoadShape, PastelChime2_Field_PickUpRoadShape),
+	    HLL_EXPORT(Field_PickUpRoadShape, PastelChime2_Field_PickUpRoadShape),
 	    HLL_TODO_EXPORT(SaveMapPicture, PastelChime2_SaveMapPicture),
 	    HLL_TODO_EXPORT(ShellOpen, PastelChime2_ShellOpen),
 	    HLL_TODO_EXPORT(File_GetTime, PastelChime2_File_GetTime),
