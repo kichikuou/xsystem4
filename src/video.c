@@ -78,11 +78,11 @@ void prepare_default_shader(struct gfx_render_job *job, void *data)
 
 static GLchar *read_shader_file(const char *path)
 {
-	GLchar *source = file_read(path, NULL);
+	GLchar *source = SDL_LoadFile(path, NULL);
 	if (!source) {
 		char full_path[PATH_MAX];
 		snprintf(full_path, PATH_MAX, XSYS4_DATA_DIR "/%s", path);
-		source = file_read(full_path, NULL);
+		source = SDL_LoadFile(full_path, NULL);
 		if (!source)
 			ERROR("Failed to load shader file %s", full_path, strerror(errno));
 	}
@@ -103,7 +103,7 @@ static GLuint load_shader_file(const char *path, GLenum type)
 	glGetShaderiv(shader, GL_COMPILE_STATUS, &shader_compiled);
 	if (!shader_compiled)
 		ERROR("Failed to compile shader: %s", path);
-	free((char*)source[1]);
+	SDL_free((char*)source[1]);
 	return shader;
 }
 
