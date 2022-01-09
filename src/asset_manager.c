@@ -34,6 +34,14 @@
 #include "xsystem4.h"
 #include "asset_manager.h"
 
+// On 32-bit android, mmap may fail to get a large contiguous virtual address
+// range. (See https://stackoverflow.com/questions/30180268)
+#if defined(__ANDROID__) && defined(__arm__)
+#define ARCHIVE_OPEN_FLAGS 0
+#else
+#define ARCHIVE_OPEN_FLAGS ARCHIVE_MMAP
+#endif
+
 enum archive_type {
 	AR_TYPE_ALD,
 	AR_TYPE_AFA,
@@ -63,7 +71,7 @@ static void ald_init(enum asset_type type, char **files, int count)
 	if (archives[type])
 		WARNING("Multiple asset archives for type %s", asset_strtype(type));
 	int error = ARCHIVE_SUCCESS;
-	archives[type] = ald_open(files, count, ARCHIVE_MMAP, &error);
+	archives[type] = ald_open(files, count, ARCHIVE_OPEN_FLAGS, &error);
 	if (error)
 		ERROR("Failed to open ALD file: %s", archive_strerror(error));
 	for (int i = 0; i < count; i++) {
@@ -78,7 +86,7 @@ static void afa_init(enum asset_type type, char *file)
 	if (archives[type])
 		WARNING("Multiple asset archives for type %s", asset_strtype(type));
 	int error = ARCHIVE_SUCCESS;
-	archives[type] = (struct archive*)afa_open(file, ARCHIVE_MMAP, &error);
+	archives[type] = (struct archive*)afa_open(file, ARCHIVE_OPEN_FLAGS, &error);
 	if (error != ARCHIVE_SUCCESS) {
 		ERROR("Failed to open AFA file: %s", archive_strerror(error));
 	}
