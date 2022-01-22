@@ -140,6 +140,12 @@ bool keyboard_focus = true;
 #define MAX_CONTROLLERS 4
 static SDL_GameController *controllers[MAX_CONTROLLERS];
 
+// Stores a mouse button event synthesized from a touch event (valid if
+// .timestamp != 0). We defer such events to prevent games from handling
+// button down events before querying the pointer position.
+static SDL_MouseButtonEvent deferred_synthetic_mouse_event;
+#define SYNTHETIC_MOUSE_EVENT_DELAY 20
+
 static enum sact_keycode sdl_to_sact_button(int button)
 {
 	switch (button) {
@@ -206,6 +212,8 @@ void joy_clear_flag(void)
 	}
 }
 
+static void mouse_event(SDL_MouseButtonEvent *e);
+
 void mouse_get_pos(int *x, int *y)
 {
 	int wx, wy;
@@ -213,6 +221,12 @@ void mouse_get_pos(int *x, int *y)
 	SDL_GetMouseState(&wx, &wy);
 	*x = (wx - sdl.viewport.x) * sdl.w / sdl.viewport.w;
 	*y = (wy - sdl.viewport.y) * sdl.h / sdl.viewport.h;
+
+	// Flush the deferred mouse button event.
+	if (deferred_synthetic_mouse_event.timestamp) {
+		mouse_event(&deferred_synthetic_mouse_event);
+		deferred_synthetic_mouse_event.timestamp = 0;
+	}
 }
 
 void mouse_set_pos(int x, int y)
@@ -284,6 +298,12 @@ void clear_editing_handler(void)
 
 void handle_events(void)
 {
+	// Flush the deferred mouse button event if it's older than 20ms.
+	if (deferred_synthetic_mouse_event.timestamp && deferred_synthetic_mouse_event.timestamp + SYNTHETIC_MOUSE_EVENT_DELAY > SDL_GetTicks()) {
+		mouse_event(&deferred_synthetic_mouse_event);
+		deferred_synthetic_mouse_event.timestamp = 0;
+	}
+
 	SDL_Event e;
 	while (SDL_PollEvent(&e)) {
 		switch (e.type) {
@@ -323,7 +343,13 @@ void handle_events(void)
 			break;
 		case SDL_MOUSEBUTTONUP:
 		case SDL_MOUSEBUTTONDOWN:
-			mouse_event(&e.button);
+			if (e.button.which == SDL_TOUCH_MOUSEID) {
+				if (deferred_synthetic_mouse_event.timestamp)
+					mouse_event(&deferred_synthetic_mouse_event);
+				deferred_synthetic_mouse_event = e.button;
+			} else {
+				mouse_event(&e.button);
+			}
 			break;
 		case SDL_MOUSEWHEEL:
 			wheel_dir = e.wheel.y;
