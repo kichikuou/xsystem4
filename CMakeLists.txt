@@ -11,13 +11,13 @@ FetchContent_Declare(
 )
 FetchContent_Declare(
   SDL
-  URL https://libsdl.org/release/SDL2-2.0.18.tar.gz
-  URL_HASH SHA1=419c62567d197a52a2136865c158f894939c1adf
+  URL https://libsdl.org/release/SDL2-2.0.20.tar.gz
+  URL_HASH SHA1=18ce006cbf07502f48abfedc088c14404091f3d3
 )
 FetchContent_Declare(
   SDL_ttf
-  GIT_REPOSITORY https://github.com/libsdl-org/SDL_ttf.git
-  GIT_TAG e579cdda025b490bcffada253e52f533165172b2
+  URL https://github.com/libsdl-org/SDL_ttf/archive/refs/tags/release-2.0.18.tar.gz
+  URL_HASH SHA1=6fc5130757b447d46c3da6abd58687e8576de8b8
 )
 FetchContent_MakeAvailable(cglm SDL SDL_ttf)
 
