@@ -26,9 +26,10 @@ set_target_properties(ffi PROPERTIES
   IMPORTED_LOCATION ${CMAKE_STAGING_PREFIX}/lib/libffi.a
   INTERFACE_INCLUDE_DIRECTORIES ${CMAKE_STAGING_PREFIX}/include)
 
-# Why NO_CMAKE_FIND_ROOT_PATH is needed?
+# CMake < 2.23 does not look for packages in CMAKE_STAGING_PREFIX by default.
 # https://gitlab.kitware.com/cmake/cmake/-/issues/16870
-find_package(SndFile REQUIRED NO_CMAKE_FIND_ROOT_PATH)
+set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE BOTH)
+find_package(SndFile REQUIRED)
 
 add_subdirectory(subprojects/libsys4)
 
