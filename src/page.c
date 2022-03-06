@@ -89,6 +89,7 @@ union vm_value variable_initval(enum ain_data_type type)
 	case AIN_REF_TYPE:
 		return (union vm_value) { .i = -1 };
 	case AIN_ARRAY_TYPE:
+	case AIN_DELEGATE:
 		slot = heap_alloc_slot(VM_PAGE);
 		heap_set_page(slot, NULL);
 		return (union vm_value) { .i = slot };
@@ -202,6 +203,8 @@ void delete_page_vars(struct page *page)
 void delete_page(int slot)
 {
 	struct page *page = heap_get_page(slot);
+	if (!page)
+		return;
 	if (page->type == STRUCT_PAGE) {
 		delete_struct(page->index, slot);
 	}
@@ -539,6 +542,28 @@ void array_sort(struct page *page, int compare_fno)
 	qsort(page->values, page->nr_vars, sizeof(union vm_value), array_compare);
 }
 
+static int current_sort_member;
+
+static int array_compare_member(const void *_a, const void *_b)
+{
+	union vm_value a_slot = *((union vm_value*)_a);
+	union vm_value b_slot = *((union vm_value*)_b);
+	struct page *a = heap_get_page(a_slot.i);
+	struct page *b = heap_get_page(b_slot.i);
+	return a->values[current_sort_member].i - b->values[current_sort_member].i;
+}
+
+void array_sort_mem(struct page *page, int member_no)
+{
+	if (!page)
+		return;
+	if (page->type != ARRAY_PAGE || array_type(page->a_type) != AIN_STRUCT)
+		VM_ERROR("A_SORT_MEM called on something other than an array of structs");
+
+	current_sort_member = member_no;
+	qsort(page->values, page->nr_vars, sizeof(union vm_value), array_compare_member);
+}
+
 int array_find(struct page *page, int start, int end, union vm_value v, int compare_fno)
 {
 	if (!page)
@@ -599,6 +624,8 @@ struct page *delegate_new_from_method(int obj, int fun)
 
 int delegate_numof(struct page *page)
 {
+	if (!page)
+		return 0;
 	if (page->type != DELEGATE_PAGE)
 		VM_ERROR("Not a delegate");
 	return page->nr_vars / 2;
@@ -606,6 +633,10 @@ int delegate_numof(struct page *page)
 
 struct page *delegate_plusa(struct page *dst, struct page *add)
 {
+	if (!dst)
+		return copy_page(add);
+	if (!add)
+		return dst;
 	if (dst->type != DELEGATE_PAGE || add->type != DELEGATE_PAGE)
 		VM_ERROR("Not a delegate");
 
@@ -625,6 +656,10 @@ struct page *delegate_plusa(struct page *dst, struct page *add)
 
 struct page *delegate_minusa(struct page *dst, struct page *minus)
 {
+	if (!dst)
+		return NULL;
+	if (!minus)
+		return dst;
 	if (dst->type != DELEGATE_PAGE || minus->type != DELEGATE_PAGE)
 		VM_ERROR("Not a delegate");
 
@@ -660,6 +695,8 @@ struct page *delegate_minusa(struct page *dst, struct page *minus)
 
 struct page *delegate_clear(struct page *page)
 {
+	if (!page)
+		return NULL;
 	if (page->type != DELEGATE_PAGE)
 		VM_ERROR("Not a delegate");
 	for (int i = 0; i < page->nr_vars; i += 2) {
