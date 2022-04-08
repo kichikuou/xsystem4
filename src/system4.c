@@ -22,7 +22,6 @@
 #include <dirent.h>
 #include <ctype.h>
 #include <getopt.h>
-#include <limits.h>
 #include <time.h>
 
 #include "system4.h"
@@ -36,10 +35,13 @@
 #include "xsystem4.h"
 #include "asset_manager.h"
 #include "debugger.h"
-#include "file.h"
 #include "gfx/gfx.h"
 #include "little_endian.h"
 #include "vm.h"
+
+#include "version.h"
+
+void apply_game_specific_hacks(struct ain *ain);
 
 struct config config = {
 	.game_name = NULL,
@@ -59,75 +61,6 @@ struct config config = {
 	.wai_path = NULL,
 	.ex_path = NULL,
 };
-
-char *unix_path(const char *path)
-{
-	char *utf = sjis2utf(path, strlen(path));
-	for (int i = 0; utf[i]; i++) {
-		if (utf[i] == '\\')
-			utf[i] = '/';
-	}
-	return utf;
-}
-
-static bool is_absolute_path(const char *path)
-{
-#if (defined(_WIN32) || defined(__WIN32__))
-	int i = (isalpha(path[0]) && path[1] == ':') ? 2 : 0;
-	return path[i] == '/' || path[i] == '\\';
-#else
-	return path[0] == '/';
-#endif
-}
-
-static char *resolve_path(const char *dir, const char *path)
-{
-	char *utf = unix_path(path);
-	if (is_absolute_path(utf))
-		return utf;
-
-	char *resolved = xmalloc(strlen(dir) + strlen(utf) + 2);
-	strcpy(resolved, dir);
-	strcat(resolved, "/");
-	strcat(resolved, utf);
-
-	free(utf);
-	return resolved;
-}
-
-char *gamedir_path(const char *path)
-{
-	return resolve_path(config.game_dir, path);
-}
-
-char *savedir_path(const char *path)
-{
-	return resolve_path(config.save_dir, path);
-}
-
-void get_date(int *year, int *month, int *mday, int *wday)
-{
-	time_t t = time(NULL);
-	struct tm *tm = localtime(&t);
-
-	*year  = tm->tm_year;
-	*month = tm->tm_mon;
-	*mday  = tm->tm_mday;
-	*wday  = tm->tm_wday;
-}
-
-void get_time(int *hour, int *min, int *sec, int *ms)
-{
-	time_t t = time(NULL);
-	struct tm *tm = localtime(&t);
-	struct timespec ts;
-	clock_gettime(CLOCK_REALTIME, &ts);
-
-	*hour = tm->tm_hour;
-	*min  = tm->tm_min;
-	*sec  = ts.tv_sec;
-	*ms   = ts.tv_nsec / 1000000;
-}
 
 static struct string *ini_string(struct ini_entry *entry)
 {
@@ -374,26 +307,28 @@ static void usage(void)
 {
 	puts("Usage: xsystem4 <options> <inifile>");
 	puts("    -h, --help          Display this message and exit");
+	puts("    -v, --version       Display the version and exit");
 	puts("    -a, --audit         Audit AIN file for xsystem4 compatibility");
 	puts("    -e, --echo-message  Echo in-game messages to standard output");
 	puts("        --font-mincho   Specify the path to the mincho font to use");
 	puts("        --font-gothic   Specify the path to the gothic font to use");
 	puts("    -j, --joypad        Enable joypad");
-	puts("        --nodebug       Disable debugger");
 #ifdef DEBUGGER_ENABLED
+	puts("        --nodebug       Disable debugger");
 	puts("        --debug         Start in debugger");
 #endif
 }
 
 enum {
 	LOPT_HELP = 256,
+	LOPT_VERSION,
 	LOPT_AUDIT,
 	LOPT_ECHO_MESSAGE,
 	LOPT_FONT_MINCHO,
 	LOPT_FONT_GOTHIC,
 	LOPT_JOYPAD,
-	LOPT_NODEBUG,
 #ifdef DEBUGGER_ENABLED
+	LOPT_NODEBUG,
 	LOPT_DEBUG,
 #endif
 };
@@ -414,18 +349,20 @@ int main(int argc, char *argv[])
 	while (1) {
 		static struct option long_options[] = {
 			{ "help",         no_argument,       0, LOPT_HELP },
+			{ "version",      no_argument,       0, LOPT_VERSION },
 			{ "audit",        no_argument,       0, LOPT_AUDIT },
 			{ "echo-message", no_argument,       0, LOPT_ECHO_MESSAGE },
 			{ "font-mincho",  required_argument, 0, LOPT_FONT_MINCHO },
 			{ "font-gothic",  required_argument, 0, LOPT_FONT_GOTHIC },
 			{ "joypad",       no_argument,       0, LOPT_JOYPAD },
-			{ "nodebug",      no_argument,       0, LOPT_NODEBUG },
 #ifdef DEBUGGER_ENABLED
+			{ "nodebug",      no_argument,       0, LOPT_NODEBUG },
 			{ "debug",        no_argument,       0, LOPT_DEBUG },
 #endif
+			{ 0 }
 		};
 		int option_index = 0;
-		int c = getopt_long(argc, argv, "haej", long_options, &option_index);
+		int c = getopt_long(argc, argv, "haejv", long_options, &option_index);
 		if (c == -1)
 			break;
 
@@ -433,6 +370,10 @@ int main(int argc, char *argv[])
 		case 'h':
 		case LOPT_HELP:
 			usage();
+			return 0;
+		case 'v':
+		case LOPT_VERSION:
+			NOTICE("xsystem4 " XSYSTEM4_VERSION);
 			return 0;
 		case 'a':
 		case LOPT_AUDIT:
@@ -459,9 +400,6 @@ int main(int argc, char *argv[])
 		case LOPT_DEBUG:
 			start_in_debugger = true;
 			break;
-#else
-		case LOPT_NODEBUG:
-			break;
 #endif
 		}
 	}
@@ -479,6 +417,9 @@ int main(int argc, char *argv[])
 		config_init_with_ini(argv[0]);
 	} else if (!strcasecmp(file_extension(argv[0]), "ain")) {
 		config_init_with_ain(argv[0]);
+	} else {
+		usage();
+		ERROR("Can't initialize game with argument '%s'", argv[0]);
 	}
 	ainfile = gamedir_path(config.ain_filename);
 
@@ -500,6 +441,8 @@ int main(int argc, char *argv[])
 		ain_free(ain);
 		return 0;
 	}
+
+	apply_game_specific_hacks(ain);
 
 	asset_manager_init();
 

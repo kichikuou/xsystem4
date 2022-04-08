@@ -175,13 +175,13 @@ enum font_face gfx_get_font_face(void)
 	return font_metrics.face;
 }
 
-bool gfx_set_font_weight(enum font_weight weight)
+bool gfx_set_font_weight(int weight)
 {
 	font_metrics.weight = weight;
 	return true;
 }
 
-enum font_weight gfx_get_font_weight(void)
+int gfx_get_font_weight(void)
 {
 	return font_metrics.weight;
 }
@@ -239,9 +239,7 @@ void gfx_set_font_name(const char *name)
 	} else if (!strcmp(name, gothic_name)) {
 		font_metrics.face = FONT_GOTHIC;
 	} else {
-		char *u = sjis2utf(name, 0);
-		WARNING("Unhandled font name: \"%s\"", u);
-		free(u);
+		WARNING("Unhandled font name: \"%s\"", display_sjis0(name));
 	}
 }
 
@@ -249,7 +247,7 @@ static void get_glyph(TTF_Font *f, Texture *dst, char *msg, SDL_Color color)
 {
 	SDL_Surface *s = TTF_RenderUTF8_Blended(f, msg, color);
 	if (!s) {
-		WARNING("Text rendering failed: %s", msg);
+		WARNING("Text rendering failed: %s", display_utf0(msg));
 		return;
 	}
 	if (s->format->format != SDL_PIXELFORMAT_RGBA32) {
@@ -292,17 +290,16 @@ static void render_glyph(Texture *dst, Texture *glyph, Point pos)
 
 static int sact_to_sdl_fontstyle(int style)
 {
-	switch (style) {
-	case FW_NORMAL:
-	case FW_NORMAL2:
-		return 0;
-	case FW_BOLD:
-	case FW_BOLD2:
-		return TTF_STYLE_BOLD;
-	default:
-		WARNING("Unknown fontstyle: %d", style);
-		return 0;
-	}
+	// FIXME:    0 - 550  is LIGHT
+	//         551 - 999  is BOLD
+	//               1000 is LIGHT
+	//        1001 - 1550 is MEDIUM
+	//        1551 - 1999 is HEAVY-BOLD
+	//        [THEN ALTERNATING MEDIUM/HEAVY-BOLD]
+	//
+	// SDL_ttf only has normal and bold...
+	style %= 1000;
+	return (style % 1000) < 551 ? 0 : TTF_STYLE_BOLD;
 }
 
 // NOTE: This is the SACT2 text rendering interface.
@@ -320,15 +317,14 @@ static int _gfx_render_text(Texture *dst, Point pos, char *msg, struct text_metr
 	set_font_style(sact_to_sdl_fontstyle(tm->weight));
 
 	int width;
-	char *conv = sjis2utf(msg, strlen(msg));
-	TTF_SizeUTF8(font->font, conv, &width, NULL);
+	TTF_SizeUTF8(font->font, msg, &width, NULL);
 
 	pos.y -= (TTF_FontAscent(font->font) - font->size * 0.9);
 
 	glBlendEquationSeparate(GL_FUNC_ADD, GL_MAX);
 	if (tm->outline_left || tm->outline_up || tm->outline_right || tm->outline_down) {
 		Texture outline;
-		get_glyph(font->font, &outline, conv, tm->outline_color);
+		get_glyph(font->font, &outline, msg, tm->outline_color);
 		// XXX: This wont work if the outline size is larger than the stroke size
 		//      of the font itself.
 		if (tm->outline_left) {
@@ -351,12 +347,11 @@ static int _gfx_render_text(Texture *dst, Point pos, char *msg, struct text_metr
 	}
 
 	Texture glyph;
-	get_glyph(font->font, &glyph, conv, tm->color);
+	get_glyph(font->font, &glyph, msg, tm->color);
 	render_glyph(dst, &glyph, pos);
 	gfx_delete_texture(&glyph);
 	glBlendEquationSeparate(GL_FUNC_ADD, GL_FUNC_ADD);
 
-	free(conv);
 	return width;
 }
 
@@ -380,7 +375,13 @@ int gfx_render_text(Texture *dst, Point pos, char *msg, struct text_metrics *tm,
 	int original_x = pos.x;
 	while (*msg) {
 		int len = extract_sjis_char(msg, c);
-		_gfx_render_text(dst, pos, c, tm);
+		if (msg[0] == '^' && game_rance02_mg) {
+			_gfx_render_text(dst, pos, "\xc3\xa9", tm);
+		} else {
+			char *utf = sjis2utf(c, len);
+			_gfx_render_text(dst, pos, utf, tm);
+			free(utf);
+		}
 		pos.x += (len == 2 ? tm->size : tm->size / 2) + char_space;
 		msg += len;
 	}

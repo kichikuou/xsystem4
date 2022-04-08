@@ -23,6 +23,7 @@
 #include "vm/heap.h"
 #include "vm/page.h"
 #include "sprite.h"
+#include "xsystem4.h"
 #include "CharSpriteManager.h"
 #include "iarray.h"
 
@@ -163,8 +164,16 @@ static void charsprite_render(struct charsprite *cs)
 	char ch[3];
 	extract_sjis_char(cs->ch->text, ch);
 
+	// XXX: this is handled here and not in gfx_render_text because of the
+	//      width calculation below
+	if (ch[0] == '}' && game_rance02_mg) {
+		ch[0] = 0x81;
+		ch[1] = 0x5c;
+		ch[2] = 0;
+	}
+
 	int w = cs->tm.size;
-	int h = cs->tm.size;
+	int h = cs->tm.size + cs->tm.size/2;
 	if (isascii(ch[0]))
 		w /= 2;
 

@@ -32,7 +32,6 @@
 #include "system4/utfsjis.h"
 
 #include "debugger.h"
-#include "file.h"
 #include "little_endian.h"
 #include "savedata.h"
 #include "vm.h"
@@ -257,7 +256,7 @@ static int alloc_scenario_page(const char *fname)
 	struct ain_function *f;
 
 	if ((fno = get_function_by_name(fname)) < 0)
-		VM_ERROR("Invalid scenario function: %s", fname);
+		VM_ERROR("Invalid scenario function: %s", display_sjis0(fname));
 	f = &ain->functions[fno];
 
 	slot = heap_alloc_slot(VM_PAGE);
@@ -445,30 +444,25 @@ static void system_call(enum syscall_code code)
 	}
 	case SYS_OUTPUT: {// system.Output(string szText)
 		struct string *str = stack_peek_string(0);
-		char *utf = sjis2utf(str->text, str->size);
-		sys_message("%s", utf);
-		free(utf);
+		sys_message("%s", display_sjis0(str->text));
 		// XXX: caller S_POPs
 		break;
 	}
 	case SYS_MSGBOX: {
 		struct string *str = stack_peek_string(0);
-		char *utf = sjis2utf(str->text, str->size);
-		SDL_ShowSimpleMessageBox(0, "xsystem4", utf, NULL);
-		free(utf);
+		SDL_ShowSimpleMessageBox(0, "xsystem4", display_sjis0(str->text), NULL);
 		// XXX: caller S_POPs
 		break;
 	}
 	case SYS_MSGBOX_OK_CANCEL: {
 		int result = 0;
 		struct string *str = stack_peek_string(0);
-		char *utf = sjis2utf(str->text, str->size);
 
 		const SDL_MessageBoxData mbox = {
 			SDL_MESSAGEBOX_INFORMATION,
 			NULL,
 			"xsystem4",
-			utf,
+			display_sjis0(str->text),
 			SDL_arraysize(buttons),
 			buttons,
 			NULL
@@ -476,8 +470,6 @@ static void system_call(enum syscall_code code)
 		if (SDL_ShowMessageBox(&mbox, &result)) {
 			WARNING("Error displaying message box");
 		}
-		// ...
-		free(utf);
 		heap_unref(stack_pop().i);
 		stack_push(result);
 		break;
@@ -543,9 +535,7 @@ static void system_call(enum syscall_code code)
 	}
 	case SYS_ERROR: {// system.Error(string szText)
 		struct string *str = stack_peek_string(0);
-		char *utf = sjis2utf(str->text, str->size);
-		sys_warning("*GAME ERROR*: %s\n", utf);
-		free(utf);
+		sys_warning("*GAME ERROR*: %s\n", display_sjis0(str->text));
 		// XXX: caller S_POPs
 		break;
 	}
@@ -691,9 +681,7 @@ void exec_strswitch(int no, struct string *str)
 
 static void echo_message(int i)
 {
-	char *u = sjis2utf(ain->messages[i]->text, ain->messages[i]->size);
-	NOTICE("MSG %d: %s", i, u);
-	free(u);
+	NOTICE("MSG %d: %s", i, display_sjis0(ain->messages[i]->text));
 }
 
 static enum opcode execute_instruction(enum opcode opcode)
@@ -844,6 +832,14 @@ static enum opcode execute_instruction(enum opcode opcode)
 		stack_push(src_var);
 		break;
 	}
+	case R_EQUALE: {
+		int rhs_var = stack_pop().i;
+		int rhs_page = stack_pop().i;
+		int lhs_var = stack_pop().i;
+		int lhs_page = stack_pop().i;
+		stack_push(lhs_page == rhs_page && lhs_var == rhs_var ? 1 : 0);
+		break;
+	}
 	case NEW: {
 		union vm_value v;
 		create_struct(stack_pop().i, &v);
@@ -954,11 +950,10 @@ static enum opcode execute_instruction(enum opcode opcode)
 		int file = stack_pop().i; // filename
 		int expr = stack_pop().i; // expression
 		if (!stack_pop().i) {
-			char *filename = sjis2utf(heap_get_string(file)->text, heap[file].s->size);
-			char *value = sjis2utf(heap_get_string(expr)->text, heap[expr].s->size);
-			sys_message("Assertion failed at %s:%d: %s\n", filename, line, value);
-			free(filename);
-			free(value);
+			sys_message("Assertion failed at %s:%d: %s\n",
+					display_sjis0(heap_get_string(file)->text),
+					line,
+					display_sjis0(heap_get_string(expr)->text));
 			vm_exit(1);
 		}
 		heap_unref(file);
@@ -1748,6 +1743,14 @@ static enum opcode execute_instruction(enum opcode opcode)
 		global_set(get_argument(0), local_get(get_argument(1)), true);
 		break;
 	}
+	case SH_STRUCTREF_GT_IMM: {
+		stack_push(member_get(get_argument(0)).i > get_argument(1) ? 1 : 0);
+		break;
+	}
+	case SH_STRUCT_ASSIGN_LOCALREF_ITOB: {
+		member_set(get_argument(0), !!local_get(get_argument(1)).i);
+		break;
+	}
 	case SH_LOCAL_ASSIGN_STRUCTREF: {
 		local_set(get_argument(0), member_get(get_argument(1)).i);
 		break;
@@ -1970,6 +1973,7 @@ static enum opcode execute_instruction(enum opcode opcode)
 	case SH_S_ASSIGN_CALLSYS19: {
 		struct string *name = get_func_stack_name(stack_pop().i);
 		heap_string_assign(stack_pop().i, name);
+		free_string(name);
 		break;
 	}
 	case SH_S_ASSIGN_STR0: {
@@ -2052,19 +2056,20 @@ static enum opcode execute_instruction(enum opcode opcode)
 	case DG_SET: {
 		int fun = stack_pop().i;
 		int obj = stack_pop().i;
-		int dg = stack_pop().i;
-		struct page *new_dg = delegate_new_from_method(obj, fun);
-		delete_page(dg);
-		heap_set_page(dg, new_dg);
+		int dg_i = stack_pop().i;
+		struct page *dg = heap_get_delegate_page(dg_i);
+		heap_set_page(dg_i, delegate_append(dg, obj, fun));
 		break;
 	}
 	case DG_CALL: { // DG_TYPE, ADDR
-		// stack: [arg0, ..., dg_page, dg_index]
 		int dg = get_argument(0);
 		if (dg < 0 || dg >= ain->nr_delegates)
 			VM_ERROR("Invalid delegate index");
-		int dg_page = stack_peek(1).i;
-		int dg_index = stack_peek(0).i;
+
+		// stack: [arg0, ..., dg_page, dg_index, [return_value]]
+		int return_values = (ain->delegates[dg].return_type.data != AIN_VOID) ? 1 : 0;
+		int dg_page = stack_peek(1 + return_values).i;
+		int dg_index = stack_peek(0 + return_values).i;
 		if (dg_index < delegate_numof(heap_get_page(dg_page))) {
 			int obj, fun;
 			delegate_get(heap_get_delegate_page(dg_page), dg_index, &obj, &fun);
@@ -2080,6 +2085,19 @@ static enum opcode execute_instruction(enum opcode opcode)
 			}
 			instr_ptr += 10;
 		} else {
+			// call finished: clean up stack and jump to return address
+			union vm_value r;
+			if (return_values) {
+				r = stack_pop();
+			}
+			stack_pop(); // dg_index
+			stack_pop(); // dg_page
+			for (int i = 0; i < ain->delegates[dg].nr_variables; i++) {
+				stack_pop(); // args
+			}
+			if (return_values) {
+				stack_push(r);
+			}
 			instr_ptr = get_argument(1);
 		}
 		break;
@@ -2317,19 +2335,13 @@ static void describe_page(struct page *page)
 		sys_message("GLOBAL_PAGE\n");
 		break;
 	case LOCAL_PAGE:
-		u = sjis2utf(ain->functions[page->index].name, 0);
-		sys_message("LOCAL_PAGE: %s\n", u);
-		free(u);
+		sys_message("LOCAL_PAGE: %s\n", display_sjis0(ain->functions[page->index].name));
 		break;
 	case STRUCT_PAGE:
-		u = sjis2utf(ain->structures[page->index].name, 0);
-		sys_message("STRUCT_PAGE: %s\n", u);
-		free(u);
+		sys_message("STRUCT_PAGE: %s\n", display_sjis0(ain->structures[page->index].name));
 		break;
 	case ARRAY_PAGE:
-		u = sjis2utf(ain_strtype(ain, page->a_type, page->array.struct_type), 0);
-		sys_message("ARRAY_PAGE: %s\n", u);
-		free(u);
+		sys_message("ARRAY_PAGE: %s\n", display_sjis0(ain_strtype(ain, page->a_type, page->array.struct_type)));
 		break;
 	case DELEGATE_PAGE:
 		// TODO: list function names
@@ -2347,9 +2359,7 @@ static void describe_slot(size_t slot)
 		break;
 	case VM_STRING:
 		if (heap[slot].s) {
-			char *u = sjis2utf(heap[slot].s->text, heap[slot].s->size);
-			sys_message("STRING: %s\n", u);
-			free(u);
+			sys_message("STRING: %s\n", display_sjis0(heap[slot].s->text));
 		} else {
 			sys_message("STRING: NULL\n");
 		}

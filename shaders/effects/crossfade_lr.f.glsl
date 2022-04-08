@@ -14,16 +14,23 @@
  * along with this program; if not, see <http://gnu.org/licenses/>.
  */
 
-#ifndef SYSTEM4_FILE_H
-#define SYSTEM4_FILE_H
+uniform sampler2D tex;   // the new scene
+uniform sampler2D old;   // the old scene
+uniform vec2 resolution; // the screen resolution
+uniform float progress;  // effect progress (0..1)
 
-#include <stddef.h>
-#include <stdbool.h>
-#include <stdio.h>
+in vec2 tex_coord;
+out vec4 frag_color;
 
-FILE *file_open_utf8(const char *path, const char *mode);
-void *file_read(const char *path, size_t *len_out);
-bool file_exists(const char *path);
-int mkdir_p(const char *path);
+#define EFFECT_WIDTH 210.0
 
-#endif /* SYSTEM4_FILE_H */
+void main() {
+        // start position of effect
+        float lhs = ((resolution.x + EFFECT_WIDTH) * progress) - EFFECT_WIDTH;
+        // current pixel x-coordinate
+        float p = tex_coord.x * resolution.x;
+	// calculate alpha value
+	float alpha = clamp((p - lhs) / EFFECT_WIDTH, 0.0, 1.0);
+	vec3 col = mix(texture(tex, tex_coord).rgb, texture(old, tex_coord).rgb, alpha);
+	frag_color = vec4(col, 1.0);
+}

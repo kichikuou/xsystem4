@@ -22,10 +22,10 @@
 #include <sys/stat.h>
 
 #include "system4.h"
+#include "system4/file.h"
 #include "system4/string.h"
 
 #include "hll.h"
-#include "file.h"
 #include "savedata.h"
 #include "vm/heap.h"
 #include "vm/page.h"
@@ -33,7 +33,6 @@
 
 static FILE *current_file = NULL;
 static char *file_contents = NULL;
-static size_t file_size = 0;
 static size_t file_cursor = 0;
 
 static int File_Open(struct string *filename, int type)
@@ -53,9 +52,9 @@ static int File_Open(struct string *filename, int type)
 	}
 
 	char *path = unix_path(filename->text);
-	current_file = fopen(path, mode);
+	current_file = file_open_utf8(path, mode);
 	if (!current_file) {
-		WARNING("Failed to open file '%s': %s", path, strerror(errno));
+		WARNING("Failed to open file '%s': %s", display_utf0(path), strerror(errno));
 	}
 
 	free(path);
@@ -72,7 +71,6 @@ static int File_Close(void)
 	if (file_contents)
 		free(file_contents);
 	file_contents = NULL;
-	file_size = 0;
 	file_cursor = 0;
 	return r;
 }
@@ -91,7 +89,7 @@ static int File_Read(struct page **_page)
 	// read file inton memory if needed
 	if (!file_contents) {
 		fseek(current_file, 0, SEEK_END);
-		file_size = ftell(current_file);
+		size_t file_size = ftell(current_file);
 		fseek(current_file, 0, SEEK_SET);
 
 		file_contents = xmalloc(file_size + 1);
@@ -116,7 +114,7 @@ static int File_Read(struct page **_page)
 
 	file_cursor = end - file_contents;
 
-	json_load_page(page, json);
+	json_load_page(page, json, true);
 	cJSON_Delete(json);
 	return 1;
 }
@@ -159,11 +157,11 @@ struct tagSaveDate {
 
 static int File_GetTime(struct string *filename, struct page **page)
 {
-	struct stat s;
+	ustat s;
 	char *path = unix_path(filename->text);
 	union vm_value *date = (*page)->values;
 
-	if (stat(path, &s) < 0) {
+	if (stat_utf8(path, &s) < 0) {
 		WARNING("stat failed: %s", strerror(errno));
 		free(path);
 		return 0;

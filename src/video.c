@@ -24,11 +24,11 @@
 
 #include "system4.h"
 #include "system4/cg.h"
+#include "system4/file.h"
 #include "system4/utfsjis.h"
 
 #include "gfx/gfx.h"
 #include "gfx/private.h"
-#include "file.h"
 #include "xsystem4.h"
 
 struct sdl_private sdl;
@@ -184,8 +184,13 @@ static void set_window_title(void)
 	SDL_SetWindowTitle(sdl.window, title);
 }
 
+static bool gfx_initialized = false;
+
 int gfx_init(void)
 {
+	if (gfx_initialized)
+		return true;
+
 	uint32_t flags = SDL_INIT_VIDEO | SDL_INIT_AUDIO;
 	if (config.joypad)
 		flags |= SDL_INIT_GAMECONTROLLER;
@@ -238,6 +243,7 @@ int gfx_init(void)
 	gfx_set_window_logical_size(config.view_width, config.view_height);
 	atexit(gfx_fini);
 	gfx_clear();
+	gfx_initialized = true;
 	return 0;
 }
 
@@ -425,6 +431,9 @@ void gfx_render_texture(struct texture *t, Rectangle *r)
 		break;
 	case DRAW_METHOD_MULTIPLY:
 		glBlendFuncSeparate(GL_DST_COLOR, GL_ZERO, GL_ZERO, GL_ONE);
+		break;
+	case DRAW_METHOD_ADDITIVE:
+		glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE, GL_ZERO, GL_ONE);
 		break;
 	default:
 		// FIXME: why doesn't this work?

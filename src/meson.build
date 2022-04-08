@@ -1,5 +1,11 @@
+version_h = vcs_tag(command : ['git', 'rev-parse', '--short', 'HEAD'],
+                    fallback : 'unknown version',
+                    input : 'version.h.in',
+                    output : 'version.h')
+
 # sources for xsystem4
-xsystem4 = ['audio.c',
+xsystem4 = [version_h,
+            'audio.c',
             'audio_meta.c',
             'audio_mixer.c',
             'asset_manager.c',
@@ -9,6 +15,7 @@ xsystem4 = ['audio.c',
             'ffi.c',
             'fnl_render.c',
             'format.c',
+            'hacks.c',
             'heap.c',
             'id_pool.c',
             'input.c',
@@ -19,6 +26,7 @@ xsystem4 = ['audio.c',
             'sprite.c',
             'system4.c',
             'text.c',
+            'util.c',
             'video.c',
             'vm.c',
 
@@ -30,6 +38,13 @@ xsystem4 = ['audio.c',
             'dungeon/renderer.c',
             'dungeon/skybox.c',
             'dungeon/tes.c',
+
+            'parts/construction.c',
+            'parts/input.c',
+            'parts/motion.c',
+            'parts/parts.c',
+            'parts/render.c',
+            'parts/text.c',
 
             'hll/ACXLoader.c',
             'hll/ADVSYS.c',
@@ -43,6 +58,8 @@ xsystem4 = ['audio.c',
             'hll/Bitarray.c',
             'hll/CharSpriteManager.c',
             'hll/ChipmunkSpriteEngine.c',
+            'hll/ChrLoader.c',
+            'hll/CommonSystemData.c',
             'hll/Confirm.c',
             'hll/Confirm2.c',
             'hll/CrayfishLogViewer.c',
@@ -56,6 +73,7 @@ xsystem4 = ['audio.c',
             'hll/FileOperation.c',
             'hll/GoatGUIEngine.c',
             'hll/Gpx2Plus.c',
+            'hll/GUIEngine.c',
             'hll/iarray.c',
             'hll/IbisInputEngine.c',
             'hll/InputDevice.c',
@@ -64,6 +82,7 @@ xsystem4 = ['audio.c',
             'hll/MainEXFile.c',
             'hll/MarmotModelEngine.c',
             'hll/Math.c',
+            'hll/MapLoader.c',
             'hll/MenuMsg.c',
             'hll/MsgLogManager.c',
             'hll/MsgLogViewer.c',
@@ -74,6 +93,7 @@ xsystem4 = ['audio.c',
             'hll/PlayMovie.c',
             'hll/SACT2.c',
             'hll/SengokuRanceFont.c',
+            'hll/SoundFilePlayer.c',
             'hll/StoatSpriteEngine.c',
             'hll/SystemService.c',
             'hll/SystemServiceEx.c',
@@ -83,10 +103,19 @@ xsystem4 = ['audio.c',
 
 xsystem4_deps = [libm, zlib, sdl2, sdl2ttf, ffi, cglm, sndfile, libsys4_dep] + gl_deps
 
-if chibi.found()
-    xsystem4_deps += chibi
-    xsystem4 += 'debugger.c'
+if get_option('debugger').allowed()
     add_project_arguments('-DDEBUGGER_ENABLED', language : 'c')
+    xsystem4 += 'debug.c'
+    xsystem4 += 'debugger_cmd.c'
+    if chibi.found()
+        xsystem4_deps += chibi
+        xsystem4 += 'debugger_scm.c'
+        add_project_arguments('-DHAVE_SCHEME', language : 'c')
+    endif
+    if readline.found()
+        xsystem4_deps += readline
+        add_project_arguments('-DHAVE_READLINE', language : 'c')
+    endif
 endif
 
 executable('xsystem4', xsystem4,

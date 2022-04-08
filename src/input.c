@@ -249,6 +249,11 @@ void mouse_clear_wheel(void)
 	wheel_dir = 0;
 }
 
+bool mouse_show_cursor(bool show)
+{
+	return SDL_ShowCursor(show ? SDL_ENABLE : SDL_DISABLE) >= 0;
+}
+
 static void key_event(SDL_KeyboardEvent *e, bool pressed)
 {
 	if (e->keysym.scancode >= (sizeof(sdl_keytable)/sizeof(*sdl_keytable)))
@@ -313,7 +318,7 @@ void handle_events(void)
 		case SDL_WINDOWEVENT:
 			switch (e.window.event) {
 			case SDL_WINDOWEVENT_EXPOSED:
-				scene_flip();
+				gfx_swap();
 				break;
 			case SDL_WINDOWEVENT_ENTER:
 				mouse_focus = true;
@@ -329,7 +334,7 @@ void handle_events(void)
 				break;
 			case SDL_WINDOWEVENT_SIZE_CHANGED:
 				gfx_update_screen_scale();
-				scene_flip();
+				gfx_swap();
 				break;
 			}
 			break;

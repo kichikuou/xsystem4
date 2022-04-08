@@ -98,9 +98,7 @@ static void trace_hll_call(struct ain_library *lib, struct ain_hll_function *f,
 	else if (!strcmp(lib->name, "SengokuRanceFont"));
 	else goto notrace;
 
-	char *u = sjis2utf(ain->functions[call_stack[call_stack_ptr-1].fno].name, 0);
-	sys_message("(%s) ", u);
-	free(u);
+	sys_message("(%s) ", display_sjis0(ain->functions[call_stack[call_stack_ptr-1].fno].name));
 
 	sys_message("%s.%s(", lib->name, f->name);
 	union vm_value **args = _args;
@@ -108,7 +106,7 @@ static void trace_hll_call(struct ain_library *lib, struct ain_hll_function *f,
 		if (i > 0) {
 			sys_message(", ");
 		}
-		sys_message("%s=", f->arguments[i].name);
+		sys_message("%s=", display_sjis0(f->arguments[i].name));
 		switch (f->arguments[i].type.data) {
 		case AIN_INT:
 		case AIN_LONG_INT:
@@ -120,9 +118,7 @@ static void trace_hll_call(struct ain_library *lib, struct ain_hll_function *f,
 		case AIN_STRING: {
 			struct string ***strs = _args;
 			struct string *s = *strs[i];
-			char *u = sjis2utf(s->text, s->size);
-			sys_message("\"%s\"", u);
-			free(u);
+			sys_message("\"%s\"", display_sjis0(s->text));
 			break;
 		}
 		case AIN_BOOL:
@@ -156,7 +152,7 @@ static void trace_hll_call(struct ain_library *lib, struct ain_hll_function *f,
 		sys_message(" -> %f", r->f);
 		break;
 	case AIN_STRING:
-		sys_message(" -> \"%s\"", ((struct string*)r->ref)->text);
+		sys_message(" -> \"%s\"", display_sjis0(((struct string*)r->ref)->text));
 		break;
 	case AIN_BOOL:
 		sys_message(" -> %s", r->i ? "true" : "false");
@@ -169,10 +165,10 @@ static void trace_hll_call(struct ain_library *lib, struct ain_hll_function *f,
 		union vm_value ***args = _args;
 		switch (f->arguments[i].type.data) {
 		case AIN_REF_INT:
-			sys_message(" (%s=%d)", f->arguments[i].name, (*args[i])->i);
+			sys_message(" (%s=%d)", display_sjis0(f->arguments[i].name), (*args[i])->i);
 			break;
 		case AIN_REF_FLOAT:
-			sys_message(" (%s=%f)", f->arguments[i].name, (*args[i])->f);
+			sys_message(" (%s=%f)", display_sjis0(f->arguments[i].name), (*args[i])->f);
 			break;
 		default:
 			break;
@@ -295,6 +291,8 @@ extern struct static_library lib_AnteaterADVEngine;
 extern struct static_library lib_BanMisc;
 extern struct static_library lib_Bitarray;
 extern struct static_library lib_ChipmunkSpriteEngine;
+extern struct static_library lib_ChrLoader;
+extern struct static_library lib_CommonSystemData;
 extern struct static_library lib_Confirm;
 extern struct static_library lib_Confirm2;
 extern struct static_library lib_CrayfishLogViewer;
@@ -309,6 +307,7 @@ extern struct static_library lib_File;
 extern struct static_library lib_FileOperation;
 extern struct static_library lib_GoatGUIEngine;
 extern struct static_library lib_Gpx2Plus;
+extern struct static_library lib_GUIEngine;
 extern struct static_library lib_IbisInputEngine;
 extern struct static_library lib_InputDevice;
 extern struct static_library lib_InputString;
@@ -316,6 +315,7 @@ extern struct static_library lib_KiwiSoundEngine;
 extern struct static_library lib_MainEXFile;
 extern struct static_library lib_MarmotModelEngine;
 extern struct static_library lib_Math;
+extern struct static_library lib_MapLoader;
 extern struct static_library lib_MenuMsg;
 extern struct static_library lib_MsgLogManager;
 extern struct static_library lib_MsgLogViewer;
@@ -327,6 +327,7 @@ extern struct static_library lib_PlayMovie;
 extern struct static_library lib_SACT2;
 extern struct static_library lib_SACTDX;
 extern struct static_library lib_SengokuRanceFont;
+extern struct static_library lib_SoundFilePlayer;
 extern struct static_library lib_StoatSpriteEngine;
 extern struct static_library lib_SystemService;
 extern struct static_library lib_SystemServiceEx;
@@ -345,6 +346,8 @@ static struct static_library *static_libraries[] = {
 	&lib_BanMisc,
 	&lib_Bitarray,
 	&lib_ChipmunkSpriteEngine,
+	&lib_ChrLoader,
+	&lib_CommonSystemData,
 	&lib_Confirm,
 	&lib_Confirm2,
 	&lib_CrayfishLogViewer,
@@ -359,6 +362,7 @@ static struct static_library *static_libraries[] = {
 	&lib_FileOperation,
 	&lib_GoatGUIEngine,
 	&lib_Gpx2Plus,
+	&lib_GUIEngine,
 	&lib_IbisInputEngine,
 	&lib_InputDevice,
 	&lib_InputString,
@@ -366,6 +370,7 @@ static struct static_library *static_libraries[] = {
 	&lib_MainEXFile,
 	&lib_MarmotModelEngine,
 	&lib_Math,
+	&lib_MapLoader,
 	&lib_MenuMsg,
 	&lib_MsgLogManager,
 	&lib_MsgLogViewer,
@@ -377,6 +382,7 @@ static struct static_library *static_libraries[] = {
 	&lib_SACT2,
 	&lib_SACTDX,
 	&lib_SengokuRanceFont,
+	&lib_SoundFilePlayer,
 	&lib_StoatSpriteEngine,
 	&lib_SystemService,
 	&lib_SystemServiceEx,

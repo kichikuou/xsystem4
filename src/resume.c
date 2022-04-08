@@ -23,9 +23,9 @@
 #include "cJSON.h"
 
 #include "system4.h"
+#include "system4/file.h"
 #include "system4/string.h"
 
-#include "file.h"
 #include "savedata.h"
 #include "vm.h"
 #include "vm/heap.h"
@@ -57,6 +57,11 @@ static cJSON *value_to_json(union vm_value v)
 	return cJSON_CreateNumber(v.i);
 }
 
+static int get_number(int i, void *data)
+{
+	return ((union vm_value*)data)[i].i;
+}
+
 static cJSON *resume_page_to_json(struct page *page)
 {
 	if (!page)
@@ -70,10 +75,7 @@ static cJSON *resume_page_to_json(struct page *page)
 		cJSON_AddNumberToObject(json, "rank", page->array.rank);
 	}
 
-	cJSON *values = cJSON_CreateArray();
-	for (int i = 0; i < page->nr_vars; i++) {
-		cJSON_AddItemToArray(values, value_to_json(page->values[i]));
-	}
+	cJSON *values = cJSON_CreateIntArray_cb(page->nr_vars, get_number, page->values);
 
 	cJSON_AddItemToObject(json, "values", values);
 	return json;
@@ -213,14 +215,10 @@ static void load_page(int slot, cJSON *json)
 
 	heap[slot].page = page;
 	heap[slot].type = VM_PAGE;
-	if (slot == 46)
-		NOTICE("SLOT 46 IS PAGE");
 }
 
 static void load_string(int slot, cJSON *json)
 {
-	if (slot == 46)
-		NOTICE("SLOT 46 IS STRING");
 	const char *str = cJSON_GetStringValue(json);
 	heap[slot].s = make_string(str, strlen(str));
 	heap[slot].type = VM_STRING;
@@ -257,7 +255,10 @@ static void delete_heap(void)
 static void alloc_heap_slot(int slot)
 {
 	if ((size_t)slot >= heap_size) {
-		heap_grow(heap_size * 2);
+		size_t next_size = heap_size * 2;
+		while ((size_t)slot >= next_size)
+			next_size *= 2;
+		heap_grow(next_size);
 	}
 	heap_free_stack[slot] = heap_free_stack[heap_free_ptr];
 	heap_free_ptr++;
@@ -343,7 +344,7 @@ void vm_load_image(const char *key, const char *path)
 {
 	cJSON *save = read_image(key, path);
 	if (!save) {
-		VM_ERROR("Failed to read VM image: '%s'", path);
+		VM_ERROR("Failed to read VM image: '%s'", display_sjis0(path));
 	}
 	cJSON *ip = type_check(cJSON_Number, cJSON_GetObjectItem(save, "ip"));
 	load_heap(type_check(cJSON_Array, cJSON_GetObjectItem(save, "heap")));
