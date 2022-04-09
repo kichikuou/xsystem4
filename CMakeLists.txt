@@ -42,6 +42,10 @@ target_compile_definitions(xsystem4 PRIVATE
 
 target_include_directories(xsystem4 PRIVATE include)
 
+set(VCS_TAG "unknown version")  # FIXME
+configure_file(src/version.h.in version.h)
+include_directories(${CMAKE_CURRENT_BINARY_DIR})
+
 target_sources(xsystem4 PRIVATE
   src/audio.c
   src/audio_meta.c
@@ -53,6 +57,7 @@ target_sources(xsystem4 PRIVATE
   src/ffi.c
   src/fnl_render.c
   src/format.c
+  src/hacks.c
   src/heap.c
   src/id_pool.c
   src/input.c
@@ -63,6 +68,7 @@ target_sources(xsystem4 PRIVATE
   src/sprite.c
   src/system4.c
   src/text.c
+  src/util.c
   src/video.c
   src/vm.c
 
@@ -74,6 +80,13 @@ target_sources(xsystem4 PRIVATE
   src/dungeon/renderer.c
   src/dungeon/skybox.c
   src/dungeon/tes.c
+
+  src/parts/construction.c
+  src/parts/input.c
+  src/parts/motion.c
+  src/parts/parts.c
+  src/parts/render.c
+  src/parts/text.c
 
   src/hll/ACXLoader.c
   src/hll/ADVSYS.c
@@ -87,6 +100,8 @@ target_sources(xsystem4 PRIVATE
   src/hll/Bitarray.c
   src/hll/CharSpriteManager.c
   src/hll/ChipmunkSpriteEngine.c
+  src/hll/ChrLoader.c
+  src/hll/CommonSystemData.c
   src/hll/Confirm.c
   src/hll/Confirm2.c
   src/hll/CrayfishLogViewer.c
@@ -100,6 +115,7 @@ target_sources(xsystem4 PRIVATE
   src/hll/FileOperation.c
   src/hll/GoatGUIEngine.c
   src/hll/Gpx2Plus.c
+  src/hll/GUIEngine.c
   src/hll/iarray.c
   src/hll/IbisInputEngine.c
   src/hll/InputDevice.c
@@ -108,6 +124,7 @@ target_sources(xsystem4 PRIVATE
   src/hll/MainEXFile.c
   src/hll/MarmotModelEngine.c
   src/hll/Math.c
+  src/hll/MapLoader.c
   src/hll/MenuMsg.c
   src/hll/MsgLogManager.c
   src/hll/MsgLogViewer.c
@@ -118,6 +135,7 @@ target_sources(xsystem4 PRIVATE
   src/hll/PlayMovie.c
   src/hll/SACT2.c
   src/hll/SengokuRanceFont.c
+  src/hll/SoundFilePlayer.c
   src/hll/StoatSpriteEngine.c
   src/hll/SystemService.c
   src/hll/SystemServiceEx.c
