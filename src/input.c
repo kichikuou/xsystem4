@@ -221,12 +221,6 @@ void mouse_get_pos(int *x, int *y)
 	SDL_GetMouseState(&wx, &wy);
 	*x = (wx - sdl.viewport.x) * sdl.w / sdl.viewport.w;
 	*y = (wy - sdl.viewport.y) * sdl.h / sdl.viewport.h;
-
-	// Flush the deferred mouse button event.
-	if (deferred_synthetic_mouse_event.timestamp) {
-		mouse_event(&deferred_synthetic_mouse_event);
-		deferred_synthetic_mouse_event.timestamp = 0;
-	}
 }
 
 void mouse_set_pos(int x, int y)
@@ -304,7 +298,7 @@ void clear_editing_handler(void)
 void handle_events(void)
 {
 	// Flush the deferred mouse button event if it's older than 20ms.
-	if (deferred_synthetic_mouse_event.timestamp && deferred_synthetic_mouse_event.timestamp + SYNTHETIC_MOUSE_EVENT_DELAY > SDL_GetTicks()) {
+	if (deferred_synthetic_mouse_event.timestamp && deferred_synthetic_mouse_event.timestamp + SYNTHETIC_MOUSE_EVENT_DELAY < SDL_GetTicks()) {
 		mouse_event(&deferred_synthetic_mouse_event);
 		deferred_synthetic_mouse_event.timestamp = 0;
 	}
