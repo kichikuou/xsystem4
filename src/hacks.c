@@ -17,18 +17,21 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 #include "system4.h"
 #include "system4/ain.h"
 #include "system4/buffer.h"
 #include "system4/instructions.h"
 #include "system4/string.h"
+#include "system4/utfsjis.h"
 
 #include "gfx/gfx.h"
 #include "xsystem4.h"
 
 #include "hll/hll.h"
 
+bool game_daibanchou_en = false;
 bool game_rance02_mg = false;
 
 static void write_instruction0(struct buffer *out, enum opcode op)
@@ -47,10 +50,6 @@ static void write_instruction1(struct buffer *out, enum opcode op, int32_t arg)
 // Uses a custom proportional font implementation which makes assumptions
 // about the font. We replace the _CalculateWidth function with a font-generic
 // implementation.
-//
-// This causes quite a bit of text overflow, but there's not much that can be
-// done about it. Using TTF_SizeUTF8 to calculate the width actually makes it
-// worse.
 static void apply_rance02_hacks(struct ain *ain)
 {
 	int fno = ain_get_function(ain, "_CalculateWidth");
@@ -59,6 +58,11 @@ static void apply_rance02_hacks(struct ain *ain)
 		return;
 	}
 	struct ain_function *f = &ain->functions[fno];
+
+	// Reduce the text scale if it wasn't set by the user
+	if (!config.manual_text_x_scale) {
+		config.text_x_scale = 0.9375;
+	}
 
 	// rewrite function
 	struct buffer out;
@@ -89,7 +93,8 @@ static void apply_rance02_hacks(struct ain *ain)
 	write_instruction1(&out, SH_LOCALREF, 1);
 	write_instruction1(&out, SH_LOCALREF, 2);
 	write_instruction0(&out, ADD);
-	write_instruction0(&out, RETURN);
+	int jump_addr = out.index;
+	write_instruction1(&out, JUMP, 0);
 
 	// return nFontSize / 2 + nWeightSize;
 	buffer_write_int32_at(&out, ifz_addr + 2, out.index);
@@ -98,16 +103,42 @@ static void apply_rance02_hacks(struct ain *ain)
 	write_instruction0(&out, DIV);
 	write_instruction1(&out, SH_LOCALREF, 2);
 	write_instruction0(&out, ADD);
-	write_instruction0(&out, RETURN);
 
+	// multiply by config.text_x_scale (if not 1.0)
+	buffer_write_int32_at(&out, jump_addr + 2, out.index);
+	if (fabsf(1.0 - config.text_x_scale) > 0.01) {
+		union { int32_t i; float f; } cast = { .f = config.text_x_scale };
+		write_instruction0(&out, ITOF);
+		write_instruction1(&out, F_PUSH, cast.i);
+		write_instruction0(&out, F_MUL);
+		write_instruction0(&out, FTOI);
+	}
+
+	write_instruction0(&out, RETURN);
 	write_instruction1(&out, ENDFUNC, fno);
 
 	game_rance02_mg = true;
 }
 
+// Daibanchou (English fan translation)
+// ------------------------------------
+// Gpx2Plus.CopyStretchReduceAMap behaves differently in order to work around
+// text rendering issues caused by how the game calculates text width in
+// StructRegionalSelect::DrawMenuItem.
+static void apply_daibanchou_hacks(struct ain *ain)
+{
+	if (ain->nr_strings > 2 && !strcmp(ain->strings[2]->text, "Seijou Academy")) {
+		game_daibanchou_en = true;
+	}
+}
+
 void apply_game_specific_hacks(struct ain *ain)
 {
-	if (!strcmp(config.game_name, "Rance 02")) {
+	char *game_name = sjis2utf(config.game_name, 0);
+	if (!strcmp(game_name, "大番長")) {
+		apply_daibanchou_hacks(ain);
+	} else if (!strcmp(game_name, "Rance 02")) {
 		apply_rance02_hacks(ain);
 	}
+	free(game_name);
 }

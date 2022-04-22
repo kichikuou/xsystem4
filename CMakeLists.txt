@@ -121,7 +121,9 @@ target_sources(xsystem4 PRIVATE
   src/hll/InputDevice.c
   src/hll/InputString.c
   src/hll/KiwiSoundEngine.c
+  src/hll/LoadCG.c
   src/hll/MainEXFile.c
+  src/hll/MainSurface.c
   src/hll/MarmotModelEngine.c
   src/hll/Math.c
   src/hll/MapLoader.c
@@ -137,6 +139,7 @@ target_sources(xsystem4 PRIVATE
   src/hll/SengokuRanceFont.c
   src/hll/SoundFilePlayer.c
   src/hll/StoatSpriteEngine.c
+  src/hll/StretchHelper.c
   src/hll/SystemService.c
   src/hll/SystemServiceEx.c
   src/hll/Timer.c

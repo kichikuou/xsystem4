@@ -108,6 +108,14 @@ struct page *local_page(void)
 	return heap[local_page_slot()].page;
 }
 
+struct page *get_local_page(int frame_no)
+{
+	if (frame_no < 0 || frame_no >= call_stack_ptr)
+		return NULL;
+	int slot = call_stack[call_stack_ptr - (frame_no + 1)].page_slot;
+	return slot < 1 ? NULL : heap[slot].page;
+}
+
 static union vm_value local_get(int varno)
 {
 	return local_page()->values[varno];
@@ -159,6 +167,14 @@ static int32_t struct_page_slot(void)
 static struct page *struct_page(void)
 {
 	return heap[struct_page_slot()].page;
+}
+
+struct page *get_struct_page(int frame_no)
+{
+	if (frame_no < 0 || frame_no >= call_stack_ptr)
+		return NULL;
+	int slot = call_stack[call_stack_ptr - (frame_no + 1)].struct_page;
+	return slot < 1 ? NULL : heap[slot].page;
 }
 
 static union vm_value member_get(int varno)
@@ -1000,7 +1016,11 @@ static enum opcode execute_instruction(enum opcode opcode)
 		break;
 	}
 	case MOD: {
-		stack[stack_ptr-2].i %= stack[stack_ptr-1].i;
+		if (!stack[stack_ptr-1].i) {
+			stack[stack_ptr-2].i = 0;
+		} else {
+			stack[stack_ptr-2].i %= stack[stack_ptr-1].i;
+		}
 		stack_ptr--;
 		break;
 	}
@@ -2189,7 +2209,8 @@ static enum opcode execute_instruction(enum opcode opcode)
 	default:
 #ifdef DEBUGGER_ENABLED
 		if ((opcode & OPTYPE_MASK) == BREAKPOINT) {
-			return execute_instruction(dbg_handle_breakpoint(opcode & ~OPTYPE_MASK));
+			dbg_handle_breakpoint();
+			return execute_instruction(opcode & ~OPTYPE_MASK);
 		}
 #endif
 		VM_ERROR("Illegal opcode: 0x%04x", opcode);
@@ -2218,7 +2239,7 @@ static void vm_free(void)
 	exit_libraries();
 	// flush call stack
 	for (int i = call_stack_ptr - 1; i >= 0; i--) {
-		heap_unref(call_stack[i].page_slot);
+		exit_unref(call_stack[i].page_slot);
 	}
 	// free globals
 	exit_unref(0);

@@ -19,10 +19,14 @@
 #ifdef DEBUGGER_ENABLED
 
 #include <stdbool.h>
+#include <stdint.h>
 #include "system4/instructions.h"
+#include "vm.h"
 #include "xsystem4.h"
 
 #define DBG_ERROR(fmt, ...) sys_warning("ERROR: " fmt "\n", ##__VA_ARGS__)
+
+struct ain_variable;
 
 struct breakpoint {
 	enum opcode restore_op;
@@ -33,6 +37,7 @@ struct breakpoint {
 };
 
 extern bool dbg_enabled;
+extern unsigned dbg_current_frame;
 
 void dbg_init(void);
 void dbg_fini(void);
@@ -41,11 +46,21 @@ void dbg_repl(void);
 void dbg_continue(void);
 void dbg_quit(void);
 void dbg_start(void(*fun)(void*), void *data);
+void dbg_cmd_init(void);
 void dbg_cmd_repl(void);
-enum opcode dbg_handle_breakpoint(unsigned bp_no);
+void dbg_handle_breakpoint(void);
 bool dbg_set_function_breakpoint(const char *_name, void(*cb)(struct breakpoint*), void *data);
 bool dbg_set_address_breakpoint(uint32_t address, void(*cb)(struct breakpoint*), void *data);
+void dbg_print_frame(unsigned no);
 void dbg_print_stack_trace(void);
+void dbg_print_dasm(void);
+void dbg_print_stack(void);
+void dbg_print_vm_state(void);
+struct ain_variable *dbg_get_member(const char *name, union vm_value *val_out);
+struct ain_variable *dbg_get_local(const char *name, union vm_value *val_out);
+struct ain_variable *dbg_get_global(const char *name, union vm_value *val_out);
+struct ain_variable *dbg_get_variable(const char *name, union vm_value *val_out);
+struct string *dbg_value_to_string(struct ain_type *type, union vm_value value, int recursive);
 
 #ifdef HAVE_SCHEME
 void dbg_scm_init(void);

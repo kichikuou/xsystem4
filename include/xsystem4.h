@@ -39,6 +39,8 @@ struct config {
 
 	bool joypad;
 	bool echo;
+	float text_x_scale;
+	bool manual_text_x_scale;
 };
 
 extern struct config config;
@@ -63,6 +65,7 @@ void get_time(int *hour, int *min, int *sec, int *ms);
 #define XSYS4_DATA_DIR "/usr/local/share/xsystem4"
 #endif
 
+extern bool game_daibanchou_en;
 extern bool game_rance02_mg;
 
 #endif /* XSYSTEM4_H */
