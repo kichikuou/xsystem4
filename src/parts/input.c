@@ -36,8 +36,9 @@ static int click_down_parts = 0;
 
 static void parts_update_mouse(struct parts *parts, Point cur_pos, bool cur_clicking)
 {
-	bool prev_in = SDL_PointInRect(&parts_prev_pos, &parts->pos);
-	bool cur_in = SDL_PointInRect(&cur_pos, &parts->pos);
+	Rectangle *hitbox = &parts->states[parts->state].common.hitbox;
+	bool prev_in = SDL_PointInRect(&parts_prev_pos, hitbox);
+	bool cur_in = SDL_PointInRect(&cur_pos, hitbox);
 
 	if (parts->linked_from >= 0 && cur_in != prev_in) {
 		parts_dirty(parts_get(parts->linked_from));
@@ -79,7 +80,7 @@ void PE_UpdateInputState(possibly_unused int passed_time)
 	mouse_get_pos(&cur_pos.x, &cur_pos.y);
 
 	struct parts *parts;
-	TAILQ_FOREACH(parts, &parts_list, parts_list_entry) {
+	PARTS_LIST_FOREACH(parts) {
 		parts_update_mouse(parts, cur_pos, cur_clicking);
 	}
 
@@ -124,7 +125,7 @@ void PE_SetOnCursorShowLinkPartsNumber(int parts_no, int link_parts_no)
 
 bool PE_SetPartsOnCursorSoundNumber(int parts_no, int sound_no)
 {
-	if (!asset_exists(ASSET_SOUND, sound_no-1)) {
+	if (!asset_exists(ASSET_SOUND, sound_no)) {
 		WARNING("Invalid sound number: %d", sound_no);
 		return false;
 	}
@@ -136,7 +137,7 @@ bool PE_SetPartsOnCursorSoundNumber(int parts_no, int sound_no)
 
 bool PE_SetPartsClickSoundNumber(int parts_no, int sound_no)
 {
-	if (!asset_exists(ASSET_SOUND, sound_no-1)) {
+	if (!asset_exists(ASSET_SOUND, sound_no)) {
 		WARNING("Invalid sound number: %d", sound_no);
 		return false;
 	}
@@ -168,4 +169,22 @@ int PE_GetClickPartsNumber(void)
 	return clicked_parts;
 }
 
+bool PE_IsCursorIn(int parts_no, int mouse_x, int mouse_y, int state)
+{
+	if (!parts_state_valid(--state))
+		return false;
 
+	struct parts *parts = parts_try_get(parts_no);
+	if (!parts)
+		return false;
+
+	// TODO: this could be cached
+	Rectangle hitbox = parts->states[state].common.hitbox;
+	for (struct parts *parent = parts->parent; parent; parent = parent->parent) {
+		hitbox.x += parent->local.pos.x;
+		hitbox.y += parent->local.pos.y;
+	}
+
+	Point mouse_pos = { mouse_x, mouse_y };
+	return SDL_PointInRect(&mouse_pos, &hitbox);
+}

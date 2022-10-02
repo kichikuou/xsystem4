@@ -24,6 +24,7 @@
 #include <getopt.h>
 #include <time.h>
 #include <math.h>
+#include <limits.h>
 
 #include "system4.h"
 #include "system4/ain.h"
@@ -37,6 +38,7 @@
 #include "asset_manager.h"
 #include "debugger.h"
 #include "gfx/gfx.h"
+#include "gfx/font.h"
 #include "little_endian.h"
 #include "vm.h"
 
@@ -63,6 +65,8 @@ struct config config = {
 	.bgi_path = NULL,
 	.wai_path = NULL,
 	.ex_path = NULL,
+	.fnl_path = NULL,
+	.font_paths = { NULL, NULL },
 };
 
 static struct string *ini_string(struct ini_entry *entry)
@@ -155,9 +159,11 @@ static void read_user_config_file(const char *path)
 
 	for (int i = 0; i < ini_size; i++) {
 		if (!strcmp(ini[i].name->text, "font-mincho")) {
-			font_paths[FONT_MINCHO] = xstrdup(ini_string(&ini[i])->text);
+			config.font_paths[FONT_MINCHO] = xstrdup(ini_string(&ini[i])->text);
 		} else if (!strcmp(ini[i].name->text, "font-gothic")) {
-			font_paths[FONT_GOTHIC] = xstrdup(ini_string(&ini[i])->text);
+			config.font_paths[FONT_GOTHIC] = xstrdup(ini_string(&ini[i])->text);
+		} else if (!strcmp(ini[i].name->text, "font-fnl")) {
+			config.fnl_path = xstrdup(ini_string(&ini[i])->text);
 		} else if (!strcmp(ini[i].name->text, "font-x-scale")) {
 			float f = strtof(ini_string(&ini[i])->text, NULL);
 			if (fabsf(f) < 0.01) {
@@ -167,6 +173,9 @@ static void read_user_config_file(const char *path)
 				config.manual_text_x_scale = true;
 				config.text_x_scale = f;
 			}
+		} else if (!strcmp(ini[i].name->text, "save-folder")) {
+			free(config.save_dir);
+			config.save_dir = xstrdup(ini_string(&ini[i])->text);
 		}
 		ini_free_entry(&ini[i]);
 	}
@@ -283,7 +292,7 @@ static void config_init_with_ain(const char *ain_path)
 
 static void ain_audit(FILE *f, struct ain *ain)
 {
-	link_libraries();
+	init_libraries();
 
 	for (size_t addr = 0; addr < ain->code_size;) {
 		uint16_t opcode = LittleEndian_getW(ain->code, addr);
@@ -333,8 +342,10 @@ static void usage(void)
 	puts("    -e, --echo-message  Echo in-game messages to standard output");
 	puts("        --font-mincho   Specify the path to the mincho font to use");
 	puts("        --font-gothic   Specify the path to the gothic font to use");
+	puts("        --font-fnl      Specify the path to a .fnl font library to use");
 	puts("        --font-x-scale  Specify the x scale for text rendering (1.0 = default scale)");
 	puts("    -j, --joypad        Enable joypad");
+	puts("        --save-folder   Override save folder location");
 #ifdef DEBUGGER_ENABLED
 	puts("        --nodebug       Disable debugger");
 	puts("        --debug         Start in debugger");
@@ -348,8 +359,10 @@ enum {
 	LOPT_ECHO_MESSAGE,
 	LOPT_FONT_MINCHO,
 	LOPT_FONT_GOTHIC,
+	LOPT_FONT_FNL,
 	LOPT_FONT_X_SCALE,
 	LOPT_JOYPAD,
+	LOPT_SAVE_FOLDER,
 #ifdef DEBUGGER_ENABLED
 	LOPT_NODEBUG,
 	LOPT_DEBUG,
@@ -368,7 +381,9 @@ int main(int argc, char *argv[])
 
 	char *font_mincho = NULL;
 	char *font_gothic = NULL;
+	char *font_fnl = NULL;
 	char *joypad = NULL;
+	char *savedir = NULL;
 
 	while (1) {
 		static struct option long_options[] = {
@@ -378,8 +393,10 @@ int main(int argc, char *argv[])
 			{ "echo-message", no_argument,       0, LOPT_ECHO_MESSAGE },
 			{ "font-mincho",  required_argument, 0, LOPT_FONT_MINCHO },
 			{ "font-gothic",  required_argument, 0, LOPT_FONT_GOTHIC },
+			{ "font-fnl",     required_argument, 0, LOPT_FONT_FNL },
 			{ "font-x-scale", required_argument, 0, LOPT_FONT_X_SCALE },
 			{ "joypad",       optional_argument, 0, LOPT_JOYPAD },
+			{ "save-folder",  required_argument, 0, LOPT_SAVE_FOLDER },
 #ifdef DEBUGGER_ENABLED
 			{ "nodebug",      no_argument,       0, LOPT_NODEBUG },
 			{ "debug",        no_argument,       0, LOPT_DEBUG },
@@ -414,6 +431,9 @@ int main(int argc, char *argv[])
 		case LOPT_FONT_GOTHIC:
 			font_gothic = optarg;
 			break;
+		case LOPT_FONT_FNL:
+			font_fnl = optarg;
+			break;
 		case LOPT_FONT_X_SCALE:
 			config.manual_text_x_scale = true;
 			config.text_x_scale = strtof(optarg, NULL);
@@ -426,6 +446,9 @@ int main(int argc, char *argv[])
 		case 'j':
 		case LOPT_JOYPAD:
 			joypad = optarg ? optarg : "on";
+			break;
+		case LOPT_SAVE_FOLDER:
+			savedir = optarg;
 			break;
 #ifdef DEBUGGER_ENABLED
 		case LOPT_NODEBUG:
@@ -462,9 +485,11 @@ int main(int argc, char *argv[])
 	// NOTE: some command line options are handled here so that they
 	//       will override settings from .xsys4rc files
 	if (font_mincho)
-		font_paths[FONT_MINCHO] = font_mincho;
+		config.font_paths[FONT_MINCHO] = font_mincho;
 	if (font_gothic)
-		font_paths[FONT_GOTHIC] = font_gothic;
+		config.font_paths[FONT_GOTHIC] = font_gothic;
+	if (font_fnl)
+		config.fnl_path = font_fnl;
 	if (joypad) {
 		if (!strcmp(joypad, "on"))
 			config.joypad = true;
@@ -472,6 +497,9 @@ int main(int argc, char *argv[])
 			config.joypad = false;
 		else
 			WARNING("Invalid value for 'joypad' option (must be 'on' or 'off')");
+	} if (savedir) {
+		free(config.save_dir);
+		config.save_dir = strdup(savedir);
 	}
 
 	if (!(ain = ain_open(ainfile, &err))) {

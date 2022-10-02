@@ -46,8 +46,8 @@ static void parts_text_append(struct parts *parts, struct string *text, int stat
 {
 	struct parts_text *t = parts_get_text(parts, state);
 
-	if (!t->texture.handle) {
-		gfx_init_texture_rgba(&t->texture, config.view_width, config.view_height,
+	if (!t->common.texture.handle) {
+		gfx_init_texture_rgba(&t->common.texture, config.view_width, config.view_height,
 				      (SDL_Color){ 0, 0, 0, 0 });
 	}
 
@@ -68,14 +68,13 @@ static void parts_text_append(struct parts *parts, struct string *text, int stat
 			continue;
 		}
 
-		t->cursor.x += gfx_render_text(&t->texture, t->cursor, c, &t->tm, t->char_space);
+		t->cursor.x += gfx_render_text(&t->common.texture, t->cursor.x, t->cursor.y, c, &t->ts);
 
 		const unsigned old_height = t->lines[t->nr_lines-1].height;
-		const unsigned new_height = t->tm.size;
+		const unsigned new_height = t->ts.size;
 		t->lines[t->nr_lines-1].height = max(old_height, new_height);
 	}
-	parts->rect.w = t->cursor.x;
-	parts->rect.h = t->cursor.y + t->lines[t->nr_lines-1].height;
+	parts_set_dims(parts, &t->common, t->cursor.x, t->cursor.y + t->lines[t->nr_lines-1].height);
 }
 
 static void parts_text_clear(struct parts *parts, int state)
@@ -86,13 +85,12 @@ static void parts_text_clear(struct parts *parts, int state)
 	text->nr_lines = 0;
 	text->cursor.x = 0;
 	text->cursor.y = 0;
-	gfx_delete_texture(&text->texture);
+	gfx_delete_texture(&text->common.texture);
 }
 
 bool PE_SetText(int parts_no, struct string *text, int state)
 {
-	state--;
-	if (state < 0 || state >= PARTS_NR_STATES)
+	if (!parts_state_valid(--state))
 		return false;
 
 	struct parts *parts = parts_get(parts_no);
@@ -103,8 +101,7 @@ bool PE_SetText(int parts_no, struct string *text, int state)
 
 bool PE_AddPartsText(int parts_no, struct string *text, int state)
 {
-	state--;
-	if (state < 0 || state >= PARTS_NR_STATES)
+	if (!parts_state_valid(--state))
 		return false;
 
 	struct parts *parts = parts_get(parts_no);
@@ -112,105 +109,101 @@ bool PE_AddPartsText(int parts_no, struct string *text, int state)
 	return true;
 }
 
+bool PE_SetPartsTextSurfaceArea(int parts_no, int x, int y, int w, int h, int state)
+{
+	if (!parts_state_valid(--state))
+		return false;
+
+	struct parts *parts = parts_get(parts_no);
+	struct parts_text *text = parts_get_text(parts, state);
+	parts_set_surface_area(parts, &text->common, x, y, w, h);
+	return true;
+}
+
 //bool PE_DeletePartsTopTextLine(int PartsNumber, int State);
 
 bool PE_SetFont(int parts_no, int type, int size, int r, int g, int b, float bold_weight, int edge_r, int edge_g, int edge_b, float edge_weight, int state)
 {
-	state--;
-	if (state < 0 || state >= PARTS_NR_STATES)
+	if (!parts_state_valid(--state))
 		return false;
 
 	struct parts_text *text = parts_get_text(parts_get(parts_no), state);
-	text->tm.face = type;
-	text->tm.size = size;
-	text->tm.color = (SDL_Color) { r, g, b, 255 };
-	text->tm.weight = bold_weight * 1000;
-	text->tm.outline_color = (SDL_Color) { edge_r, edge_g, edge_b, 255 };
-	text->tm.outline_left = edge_weight;
-	text->tm.outline_up = edge_weight;
-	text->tm.outline_right = edge_weight;
-	text->tm.outline_down = edge_weight;
+	text->ts.face = type;
+	text->ts.size = size;
+	text->ts.color = (SDL_Color) { r, g, b, 255 };
+	text->ts.weight = bold_weight * 1000;
+	text->ts.edge_color = (SDL_Color) { edge_r, edge_g, edge_b, 255 };
+	text_style_set_edge_width(&text->ts, edge_weight);
 	return true;
 }
 
 bool PE_SetPartsFontType(int parts_no, int type, int state)
 {
-	state--;
-	if (state < 0 || state >= PARTS_NR_STATES)
+	if (!parts_state_valid(--state))
 		return false;
 
-	parts_get_text(parts_get(parts_no), state)->tm.face = type;
+	parts_get_text(parts_get(parts_no), state)->ts.face = type;
 	return true;
 }
 
 bool PE_SetPartsFontSize(int parts_no, int size, int state)
 {
-	state--;
-	if (state < 0 || state >= PARTS_NR_STATES)
+	if (!parts_state_valid(--state))
 		return false;
 
-	parts_get_text(parts_get(parts_no), state)->tm.size = size;
+	parts_get_text(parts_get(parts_no), state)->ts.size = size;
 	return true;
 }
 
 bool PE_SetPartsFontColor(int parts_no, int r, int g, int b, int state)
 {
-	state--;
-	if (state < 0 || state >= PARTS_NR_STATES)
+	if (!parts_state_valid(--state))
 		return false;
 
-	parts_get_text(parts_get(parts_no), state)->tm.color = (SDL_Color) { r, g, b, 255 };
+	parts_get_text(parts_get(parts_no), state)->ts.color = (SDL_Color) { r, g, b, 255 };
 	return true;
 }
 
 bool PE_SetPartsFontBoldWeight(int parts_no, float bold_weight, int state)
 {
-	state--;
-	if (state < 0 || state >= PARTS_NR_STATES)
+	if (!parts_state_valid(--state))
 		return false;
 
-	parts_get_text(parts_get(parts_no), state)->tm.weight = bold_weight * 1000;
+	parts_get_text(parts_get(parts_no), state)->ts.weight = bold_weight * 1000;
 	return true;
 }
 
 bool PE_SetPartsFontEdgeColor(int parts_no, int r, int g, int b, int state)
 {
-	state--;
-	if (state < 0 || state >= PARTS_NR_STATES)
+	if (!parts_state_valid(--state))
 		return false;
 
-	parts_get_text(parts_get(parts_no), state)->tm.outline_color = (SDL_Color) { r, g, b, 255 };
+	parts_get_text(parts_get(parts_no), state)->ts.edge_color = (SDL_Color) { r, g, b, 255 };
 	return true;
 }
 
 bool PE_SetPartsFontEdgeWeight(int parts_no, float edge_weight, int state)
 {
-	state--;
-	if (state < 0 || state >= PARTS_NR_STATES)
+	if (!parts_state_valid(--state))
 		return false;
 
 	struct parts_text *text = parts_get_text(parts_get(parts_no), state);
-	text->tm.outline_left = edge_weight;
-	text->tm.outline_up = edge_weight;
-	text->tm.outline_right = edge_weight;
-	text->tm.outline_down = edge_weight;
+	text_style_set_edge_width(&text->ts, edge_weight);
 	return true;
 }
 
 bool PE_SetTextCharSpace(int parts_no, int char_space, int state)
 {
-	state--;
-	if (state < 0 || state >= PARTS_NR_STATES)
+	if (!parts_state_valid(--state))
 		return false;
 
-	parts_get_text(parts_get(parts_no), state)->char_space = char_space;
+	parts_get_text(parts_get(parts_no), state)->ts.font_spacing = char_space;
 	return true;
 }
 
 bool PE_SetTextLineSpace(int parts_no, int line_space, int state)
 {
-	state--;
-	if (state < 0 || state >= PARTS_NR_STATES)
+	if (!parts_state_valid(--state))
 		return false;
 
 	parts_get_text(parts_get(parts_no), state)->line_space = line_space;

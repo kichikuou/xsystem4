@@ -34,6 +34,7 @@ struct copy_shader {
 	// optional
 	GLint color;
 	GLint threshold;
+	GLint threshold2;
 };
 
 struct copy_data {
@@ -43,6 +44,7 @@ struct copy_data {
 	// optional
 	float r, g, b, a;
 	float threshold;
+	float threshold2;
 };
 
 #define ROTATE_DATA(dst, _sx, _sy, _w, _h)		\
@@ -63,12 +65,17 @@ static struct copy_shader copy_alpha_key_shader;
 static struct copy_shader copy_use_amap_under_shader;
 static struct copy_shader copy_use_amap_border_shader;
 static struct copy_shader blend_amap_color_shader;
-static struct copy_shader blend_amap_alpha_shader;
+static struct copy_shader blend_amap_alpha_bright_shader;
+static struct copy_shader blend_use_amap_color_shader;
 static struct copy_shader fill_shader;
 static struct copy_shader fill_amap_over_border_shader;
 static struct copy_shader fill_amap_under_border_shader;
+static struct copy_shader fill_amap_gradation_ud_shader;
 static struct copy_shader hitbox_shader;
 static struct copy_shader hitbox_noblend_shader;
+static struct copy_shader amap_saturate_shader;
+static struct copy_shader blend_rmap_color_shader;
+static struct copy_shader dilate_shader;
 
 static void prepare_copy_shader(struct gfx_render_job *job, void *data)
 {
@@ -79,6 +86,7 @@ static void prepare_copy_shader(struct gfx_render_job *job, void *data)
 
 	glUniform4f(s->color, d->r, d->g, d->b, d->a);
 	glUniform1f(s->threshold, d->threshold);
+	glUniform1f(s->threshold2, d->threshold2);
 }
 
 static void load_copy_shader(struct copy_shader *s, const char *v_path, const char *f_path)
@@ -88,6 +96,7 @@ static void load_copy_shader(struct copy_shader *s, const char *v_path, const ch
 	s->top_right = glGetUniformLocation(s->s.program, "top_right");
 	s->color = glGetUniformLocation(s->s.program, "color");
 	s->threshold = glGetUniformLocation(s->s.program, "threshold");
+	s->threshold2 = glGetUniformLocation(s->s.program, "threshold2");
 	s->s.prepare = prepare_copy_shader;
 }
 
@@ -115,8 +124,10 @@ void gfx_draw_init(void)
 	// copy shader that sets source RGB to a constant
 	load_copy_shader(&blend_amap_color_shader, "shaders/render.v.glsl", "shaders/blend_amap_color.f.glsl");
 
-	// copy shader that multiples the source alpha by a constant
-	load_copy_shader(&blend_amap_alpha_shader, "shaders/render.v.glsl", "shaders/blend_amap_alpha.f.glsl");
+	// copy shader that multiples the source color and alpha by a constant
+	load_copy_shader(&blend_amap_alpha_bright_shader, "shaders/render.v.glsl", "shaders/blend_amap_alpha_bright.f.glsl");
+
+	load_copy_shader(&blend_use_amap_color_shader, "shaders/render.v.glsl", "shaders/blend_use_amap_color.f.glsl");
 
 	// basic fill shader
 	load_copy_shader(&fill_shader, "shaders/render.v.glsl", "shaders/fill.f.glsl");
@@ -127,11 +138,23 @@ void gfx_draw_init(void)
 	// fill shader that only fills fragments below a certain alpha threshold
 	load_copy_shader(&fill_amap_under_border_shader, "shaders/render.v.glsl", "shaders/fill_amap_under_border.f.glsl");
 
+	// fill shader that fills the alpha map with a gradient
+	load_copy_shader(&fill_amap_gradation_ud_shader, "shaders/render.v.glsl", "shaders/fill_amap_gradation_ud.f.glsl");
+
 	// shader that discards texels that fail a hitbox test
 	load_copy_shader(&hitbox_shader, "shaders/render.v.glsl", "shaders/hitbox.f.glsl");
 
 	// hitbox shader which ignores alpha component of texture (a=1)
 	load_copy_shader(&hitbox_noblend_shader, "shaders/render.v.glsl", "shaders/hitbox_noblend.f.glsl");
+
+	// shader that sets the color to black or white depending on alpha value
+	load_copy_shader(&amap_saturate_shader, "shaders/render.v.glsl", "shaders/amap_saturate.f.glsl");
+
+	// shader that sets source RGB to a constant, using source red channel as alpha
+	load_copy_shader(&blend_rmap_color_shader, "shaders/render.v.glsl", "shaders/blend_rmap_color.f.glsl");
+
+	// shader that dilates every pixel (for bold/outline text rendering)
+	load_copy_shader(&dilate_shader, "shaders/render.v.glsl", "shaders/dilate.f.glsl");
 }
 
 static void run_draw_shader(Shader *s, Texture *dst, Texture *src, mat4 mw_transform, mat4 wv_transform, struct copy_data *data)
@@ -306,9 +329,42 @@ void gfx_blend(Texture *dst, int dx, int dy, Texture *src, int sx, int sy, int w
 	restore_blend_mode();
 }
 
+void gfx_blend_src_bright(Texture *dst, int dx, int dy, Texture *src, int sx, int sy, int w, int h, int a, int rate)
+{
+	GLfloat f_rate = rate / 255.0;
+	f_rate *= (a / 255.0);
+	glBlendFuncSeparate(GL_CONSTANT_COLOR, GL_ONE_MINUS_CONSTANT_ALPHA, GL_ZERO, GL_ONE);
+	glBlendColor(f_rate, f_rate, f_rate, a / 255.0);
+
+	struct copy_data data = COPY_DATA(dx, dy, sx, sy, w, h);
+	run_copy_shader(&copy_shader.s, dst, src, &data);
+
+	restore_blend_mode();
+}
+
+void gfx_blend_add_satur(Texture *dst, int dx, int dy, Texture *src, int sx, int sy, int w, int h)
+{
+	glBlendFuncSeparate(GL_DST_ALPHA, GL_ONE, GL_ZERO, GL_ONE);
+
+	struct copy_data data = COPY_DATA(dx, dy, sx, sy, w, h);
+	run_copy_shader(&copy_shader.s, dst, src, &data);
+
+	restore_blend_mode();
+}
+
 void gfx_blend_amap(Texture *dst, int dx, int dy, Texture *src, int sx, int sy, int w, int h)
 {
 	glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_DST_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+	struct copy_data data = COPY_DATA(dx, dy, sx, sy, w, h);
+	run_copy_shader(&copy_shader.s, dst, src, &data);
+
+	restore_blend_mode();
+}
+
+void gfx_blend_amap_src_only(Texture *dst, int dx, int dy, Texture *src, int sx, int sy, int w, int h)
+{
+	glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE, GL_ZERO, GL_ONE);
 
 	struct copy_data data = COPY_DATA(dx, dy, sx, sy, w, h);
 	run_copy_shader(&copy_shader.s, dst, src, &data);
@@ -326,6 +382,21 @@ void gfx_blend_amap_color(Texture *dst, int dx, int dy, Texture *src, int sx, in
 	data.r = r / 255.0;
 	data.g = g / 255.0;
 	data.b = b / 255.0;
+	data.a = 1.0;
+	run_copy_shader(&blend_amap_color_shader.s, dst, src, &data);
+
+	restore_blend_mode();
+}
+
+void gfx_blend_amap_color_alpha(Texture *dst, int dx, int dy, Texture *src, int sx, int sy, int w, int h, int r, int g, int b, int a)
+{
+	glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_DST_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+	struct copy_data data = COPY_DATA(dx, dy, sx, sy, w, h);
+	data.r = r / 255.0;
+	data.g = g / 255.0;
+	data.b = b / 255.0;
+	data.a = a / 255.0;
 	run_copy_shader(&blend_amap_color_shader.s, dst, src, &data);
 
 	restore_blend_mode();
@@ -336,8 +407,89 @@ void gfx_blend_amap_alpha(Texture *dst, int dx, int dy, Texture *src, int sx, in
 	glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_DST_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
 	struct copy_data data = COPY_DATA(dx, dy, sx, sy, w, h);
-	data.threshold = a / 255.0;
-	run_copy_shader(&blend_amap_alpha_shader.s, dst, src, &data);
+	data.r = 1.0;
+	data.g = 1.0;
+	data.b = 1.0;
+	data.a = a / 255.0;
+	run_copy_shader(&blend_amap_alpha_bright_shader.s, dst, src, &data);
+
+	restore_blend_mode();
+}
+
+void gfx_blend_amap_bright(Texture *dst, int dx, int dy, Texture *src, int sx, int sy, int w, int h, int rate)
+{
+	glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_DST_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+	struct copy_data data = COPY_DATA(dx, dy, sx, sy, w, h);
+	data.r = rate / 255.0;
+	data.g = rate / 255.0;
+	data.b = rate / 255.0;
+	data.a = 1.0;
+	run_copy_shader(&blend_amap_alpha_bright_shader.s, dst, src, &data);
+
+	restore_blend_mode();
+}
+
+void gfx_blend_amap_alpha_src_bright(Texture *dst, int dx, int dy, Texture *src, int sx, int sy, int w, int h, int alpha, int rate)
+{
+	glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_DST_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+	struct copy_data data = COPY_DATA(dx, dy, sx, sy, w, h);
+	data.r = rate / 255.0;
+	data.g = rate / 255.0;
+	data.b = rate / 255.0;
+	data.a = alpha / 255.0;
+	run_copy_shader(&blend_amap_alpha_bright_shader.s, dst, src, &data);
+
+	restore_blend_mode();
+}
+
+void gfx_blend_use_amap_color(Texture *dst, int dx, int dy, Texture *src, int sx, int sy, int w, int h, int r, int g, int b, int rate)
+{
+	glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ZERO, GL_ONE);
+
+	struct copy_data data = COPY_DATA(dx, dy, sx, sy, w, h);
+	data.r = r / 255.0;
+	data.g = g / 255.0;
+	data.b = b / 255.0;
+	data.a = 1.0;
+	data.threshold = rate / 255.0;
+	run_copy_shader(&blend_use_amap_color_shader.s, dst, src, &data);
+
+	restore_blend_mode();
+
+}
+
+void gfx_blend_screen(Texture *dst, int dx, int dy, Texture *src, int sx, int sy, int w, int h)
+{
+	glBlendFuncSeparate(GL_ONE, GL_ONE_MINUS_SRC_COLOR, GL_ZERO, GL_ONE);
+
+	struct copy_data data = COPY_DATA(dx, dy, sx, sy, w, h);
+	run_copy_shader(&copy_shader.s, dst, src, &data);
+
+	restore_blend_mode();
+}
+
+void gfx_blend_multiply(Texture *dst, int dx, int dy, Texture *src, int sx, int sy, int w, int h)
+{
+	glBlendFuncSeparate(GL_DST_COLOR, GL_ZERO, GL_ZERO, GL_ONE);
+
+	struct copy_data data = COPY_DATA(dx, dy, sx, sy, w, h);
+	run_copy_shader(&copy_shader.s, dst, src, &data);
+
+	restore_blend_mode();
+}
+
+void gfx_blend_screen_alpha(Texture *dst, int dx, int dy, Texture *src, int sx, int sy, int w, int h, int a)
+{
+	glBlendFuncSeparate(GL_ONE, GL_ONE_MINUS_SRC_COLOR, GL_ZERO, GL_ONE);
+
+	struct copy_data data = COPY_DATA(dx, dy, sx, sy, w, h);
+	data.r = a / 255.0;
+	data.g = a / 255.0;
+	data.b = a / 255.0;
+	data.a = 1.0;
+	run_copy_shader(&blend_amap_alpha_bright_shader.s, dst, src, &data);
 
 	restore_blend_mode();
 }
@@ -405,6 +557,66 @@ void gfx_fill_amap_under_border(Texture *dst, int x, int y, int w, int h, int al
 	restore_blend_mode();
 }
 
+void gfx_fill_amap_gradation_ud(Texture *dst, int x, int y, int w, int h, int up_a, int down_a)
+{
+	glBlendFuncSeparate(GL_ZERO, GL_ONE, GL_ONE, GL_ZERO);
+
+	struct copy_data data = COPY_DATA(x, y, 0, 0, w, h);
+	data.threshold = up_a / 255.0;
+	data.threshold2 = down_a / 255.0;
+	run_fill_shader(&fill_amap_gradation_ud_shader.s, dst, &data);
+
+	restore_blend_mode();
+}
+
+void gfx_fill_screen(Texture *dst, int x, int y, int w, int h, int r, int g, int b)
+{
+	glBlendFuncSeparate(GL_ONE, GL_ONE_MINUS_SRC_COLOR, GL_ZERO, GL_ONE);
+
+	struct copy_data data = COPY_DATA(x, y, 0, 0, w, h);
+	data.r = r / 255.0;
+	data.g = g / 255.0;
+	data.b = b / 255.0;
+	data.a = 1.0;
+	run_copy_shader(&fill_shader.s, dst, NULL, &data);
+
+	restore_blend_mode();
+}
+
+void gfx_fill_multiply(Texture *dst, int x, int y, int w, int h, int r, int g, int b)
+{
+	glBlendFuncSeparate(GL_DST_COLOR, GL_ZERO, GL_ZERO, GL_ONE);
+
+	struct copy_data data = COPY_DATA(x, y, 0, 0, w, h);
+	data.r = r / 255.0;
+	data.g = g / 255.0;
+	data.b = b / 255.0;
+	data.a = 1.0;
+	run_copy_shader(&fill_shader.s, dst, NULL, &data);
+
+	restore_blend_mode();
+}
+
+void gfx_satur_dp_dpxsa(Texture *dst, int dx, int dy, Texture *src, int sx, int sy, int w, int h)
+{
+	glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE, GL_ZERO, GL_ONE);
+
+	struct copy_data data = COPY_DATA(dx, dy, sx, sy, w, h);
+	run_copy_shader(&amap_saturate_shader.s, dst, src, &data);
+
+	restore_blend_mode();
+}
+
+void gfx_screen_da_daxsa(Texture *dst, int dx, int dy, Texture *src, int sx, int sy, int w, int h)
+{
+	glBlendFuncSeparate(GL_ZERO, GL_ONE, GL_ONE, GL_ONE);
+
+	struct copy_data data = COPY_DATA(dx, dy, sx, sy, w, h);
+	run_copy_shader(&copy_shader.s, dst, src, &data);
+
+	restore_blend_mode();
+}
+
 void gfx_add_da_daxsa(Texture *dst, int dx, int dy, Texture *src, int sx, int sy, int w, int h)
 {
 	// color = dst_color
@@ -438,6 +650,18 @@ void gfx_sub_da_daxsa(struct texture *dst, int dx, int dy, struct texture *src, 
 
 	struct copy_data data = COPY_DATA(dx, dy, sx, sy, w, h);
 	run_copy_shader(&copy_shader.s, dst, src, &data);
+
+	restore_blend_mode();
+}
+
+void gfx_bright_dest_only(Texture *dst, int x, int y, int w, int h, int rate)
+{
+	GLfloat f_rate = rate / 255.0;
+	glBlendFuncSeparate(GL_ZERO, GL_CONSTANT_COLOR, GL_ZERO, GL_ONE);
+	glBlendColor(f_rate, f_rate, f_rate, 1.0);
+
+	struct copy_data data = COPY_DATA(x, y, 0, 0, w, h);
+	run_copy_shader(&copy_shader.s, dst, NULL, &data);
 
 	restore_blend_mode();
 }
@@ -484,6 +708,20 @@ void gfx_copy_stretch_blend_amap(struct texture *dst, int dx, int dy, int dw, in
 
 	struct copy_data data = STRETCH_DATA(dx, dy, dw, dh, sx, sy, sw, sh);
 	run_copy_shader(&copy_shader.s, dst, src, &data);
+
+	restore_blend_mode();
+}
+
+void gfx_copy_stretch_blend_amap_alpha(struct texture *dst, int dx, int dy, int dw, int dh, struct texture *src, int sx, int sy, int sw, int sh, int a)
+{
+	glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_DST_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+	struct copy_data data = STRETCH_DATA(dx, dy, dw, dh, sx, sy, sw, sh);
+	data.r = 1.0;
+	data.g = 1.0;
+	data.b = 1.0;
+	data.a = a / 255.0;
+	run_copy_shader(&blend_amap_alpha_bright_shader.s, dst, src, &data);
 
 	restore_blend_mode();
 }
@@ -765,5 +1003,68 @@ void gfx_copy_stretch_with_alpha_map(Texture *dst, int dx, int dy, int dw, int d
 	struct copy_data data = STRETCH_DATA(dx, dy, dw, dh, sx, sy, sw, sh);
 	run_copy_shader(&copy_shader.s, dst, src, &data);
 
+	restore_blend_mode();
+}
+
+// XXX: Not an actual DrawGraph function; used for rendering text
+void gfx_draw_glyph(Texture *dst, float dx, int dy, Texture *glyph, SDL_Color color, float scale_x, float bold_width)
+{
+	dx = roundf(dx);
+
+	glBlendFuncSeparate(GL_ONE, GL_ZERO, GL_ZERO, GL_ONE);
+	struct copy_data fill_data = COPY_DATA(dx, dy, dx, dy, glyph->w * scale_x, glyph->h);
+	fill_data.r = color.r / 255.0;
+	fill_data.g = color.g / 255.0;
+	fill_data.b = color.b / 255.0;
+	fill_data.a = 0.0;
+	fill_data.threshold = 0.001;
+	run_copy_shader(&fill_amap_under_border_shader.s, dst, dst, &fill_data);
+
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	glBlendEquationSeparate(GL_FUNC_ADD, GL_MAX);
+
+	struct copy_data data = STRETCH_DATA(
+			dx, dy, glyph->w * scale_x, glyph->h,
+			0,  0,  glyph->w,           glyph->h);
+	data.r = color.r / 255.0;
+	data.g = color.g / 255.0;
+	data.b = color.b / 255.0;
+	data.a = 1.0;
+
+	if (bold_width < 0.01) {
+		run_copy_shader(&blend_rmap_color_shader.s, dst, glyph, &data);
+	} else {
+		data.threshold = bold_width;
+		run_copy_shader(&dilate_shader.s, dst, glyph, &data);
+	}
+
+	restore_blend_mode();
+}
+
+void gfx_draw_glyph_to_pmap(Texture *dst, float dx, int dy, Texture *glyph, Rectangle glyph_pos, SDL_Color color, float scale_x)
+{
+	struct copy_data data = STRETCH_DATA(
+			dx,          dy,          glyph_pos.w * scale_x, glyph_pos.h,
+			glyph_pos.x, glyph_pos.y, glyph_pos.w,           glyph_pos.h);
+	data.r = color.r / 255.0;
+	data.g = color.g / 255.0;
+	data.b = color.b / 255.0;
+	data.a = 1.0;
+	glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ZERO, GL_ONE);
+	run_copy_shader(&blend_rmap_color_shader.s, dst, glyph, &data);
+	restore_blend_mode();
+}
+
+void gfx_draw_glyph_to_amap(Texture *dst, float dx, int dy, Texture *glyph, Rectangle glyph_pos, float scale_x)
+{
+	struct copy_data data = STRETCH_DATA(
+			dx,          dy,          glyph_pos.w * scale_x, glyph_pos.h,
+			glyph_pos.x, glyph_pos.y, glyph_pos.w,           glyph_pos.h);
+	data.r = 1.0;
+	data.g = 1.0;
+	data.b = 1.0;
+	data.a = 1.0;
+	glBlendFuncSeparate(GL_ZERO, GL_ONE, GL_ONE, GL_ZERO);
+	run_copy_shader(&blend_rmap_color_shader.s, dst, glyph, &data);
 	restore_blend_mode();
 }

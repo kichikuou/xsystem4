@@ -24,6 +24,7 @@
 #include "vm.h"
 #include "vm/heap.h"
 #include "vm/page.h"
+#include "xsystem4.h"
 
 #define HLL_MAX_ARGS 64
 
@@ -57,6 +58,7 @@ bool library_function_exists(int libno, int fno)
 static void trace_hll_call(struct ain_library *lib, struct ain_hll_function *f,
 		      struct hll_function *fun, union vm_value *r, void *_args)
 {
+	/*
 	// list of traced libraries
 	if (!strcmp(lib->name, "StoatSpriteEngine") || !strcmp(lib->name, "ChipmunkSpriteEngine")) {
 		// list of excluded functions
@@ -86,16 +88,22 @@ static void trace_hll_call(struct ain_library *lib, struct ain_hll_function *f,
 	}
 	//else if (!strcmp(lib->name, "DrawGraph"));
 	else if (!strcmp(lib->name, "SACT2")) {
+		if (strncmp(f->name, "SP_", 3)) goto notrace;
 		if (!strcmp(f->name, "Key_IsDown")) goto notrace;
 		if (!strcmp(f->name, "Mouse_GetPos")) goto notrace;
 		if (!strcmp(f->name, "SP_ExistAlpha")) goto notrace;
 		if (!strcmp(f->name, "SP_IsPtInRect")) goto notrace;
+		if (!strcmp(f->name, "SP_IsPtIn")) goto notrace;
 		if (!strcmp(f->name, "SP_IsUsing")) goto notrace;
+		if (!strcmp(f->name, "SP_SetShow")) goto notrace;
 		if (!strcmp(f->name, "SP_SetPos")) goto notrace;
 		if (!strcmp(f->name, "Timer_Get")) goto notrace;
 		if (!strcmp(f->name, "Update")) goto notrace;
 	}
-	else if (!strcmp(lib->name, "SengokuRanceFont"));
+	else*/ if (!strcmp(lib->name, "SengokuRanceFont")) {
+		if (!strcmp(f->name, "SP_SetReduceDescender")) goto notrace;
+		if (!strcmp(f->name, "SP_ClearState")) goto notrace;
+	}
 	else goto notrace;
 
 	sys_message("(%s) ", display_sjis0(ain->functions[call_stack[call_stack_ptr-1].fno].name));
@@ -290,12 +298,15 @@ extern struct static_library lib_AliceLogo5;
 extern struct static_library lib_AnteaterADVEngine;
 extern struct static_library lib_BanMisc;
 extern struct static_library lib_Bitarray;
+extern struct static_library lib_CGManager;
 extern struct static_library lib_ChipmunkSpriteEngine;
 extern struct static_library lib_ChrLoader;
 extern struct static_library lib_CommonSystemData;
 extern struct static_library lib_Confirm;
 extern struct static_library lib_Confirm2;
+extern struct static_library lib_Confirm3;
 extern struct static_library lib_CrayfishLogViewer;
+extern struct static_library lib_Cursor;
 extern struct static_library lib_DataFile;
 extern struct static_library lib_DrawDungeon;
 extern struct static_library lib_DrawDungeon14;
@@ -304,7 +315,9 @@ extern struct static_library lib_DrawMovie2;
 extern struct static_library lib_DrawPluginManager;
 extern struct static_library lib_DrawSimpleText;
 extern struct static_library lib_File;
+extern struct static_library lib_File2;
 extern struct static_library lib_FileOperation;
+extern struct static_library lib_FillAngle;
 extern struct static_library lib_GoatGUIEngine;
 extern struct static_library lib_Gpx2Plus;
 extern struct static_library lib_GUIEngine;
@@ -319,6 +332,7 @@ extern struct static_library lib_MarmotModelEngine;
 extern struct static_library lib_Math;
 extern struct static_library lib_MapLoader;
 extern struct static_library lib_MenuMsg;
+extern struct static_library lib_MonsterInfo;
 extern struct static_library lib_MsgLogManager;
 extern struct static_library lib_MsgLogViewer;
 extern struct static_library lib_MsgSkip;
@@ -326,6 +340,7 @@ extern struct static_library lib_OutputLog;
 extern struct static_library lib_PassRegister;
 extern struct static_library lib_PlayDemo;
 extern struct static_library lib_PlayMovie;
+extern struct static_library lib_ReignEngine;
 extern struct static_library lib_SACT2;
 extern struct static_library lib_SACTDX;
 extern struct static_library lib_SengokuRanceFont;
@@ -335,6 +350,7 @@ extern struct static_library lib_StretchHelper;
 extern struct static_library lib_SystemService;
 extern struct static_library lib_SystemServiceEx;
 extern struct static_library lib_Timer;
+extern struct static_library lib_Toushin3Loader;
 extern struct static_library lib_VSFile;
 
 static struct static_library *static_libraries[] = {
@@ -348,12 +364,15 @@ static struct static_library *static_libraries[] = {
 	&lib_AnteaterADVEngine,
 	&lib_BanMisc,
 	&lib_Bitarray,
+	&lib_CGManager,
 	&lib_ChipmunkSpriteEngine,
 	&lib_ChrLoader,
 	&lib_CommonSystemData,
 	&lib_Confirm,
 	&lib_Confirm2,
+	&lib_Confirm3,
 	&lib_CrayfishLogViewer,
+	&lib_Cursor,
 	&lib_DataFile,
 	&lib_DrawDungeon,
 	&lib_DrawDungeon14,
@@ -362,7 +381,9 @@ static struct static_library *static_libraries[] = {
 	&lib_DrawPluginManager,
 	&lib_DrawSimpleText,
 	&lib_File,
+	&lib_File2,
 	&lib_FileOperation,
+	&lib_FillAngle,
 	&lib_GoatGUIEngine,
 	&lib_Gpx2Plus,
 	&lib_GUIEngine,
@@ -377,6 +398,7 @@ static struct static_library *static_libraries[] = {
 	&lib_Math,
 	&lib_MapLoader,
 	&lib_MenuMsg,
+	&lib_MonsterInfo,
 	&lib_MsgLogManager,
 	&lib_MsgLogViewer,
 	&lib_MsgSkip,
@@ -384,6 +406,7 @@ static struct static_library *static_libraries[] = {
 	&lib_PassRegister,
 	&lib_PlayDemo,
 	&lib_PlayMovie,
+	&lib_ReignEngine,
 	&lib_SACT2,
 	&lib_SACTDX,
 	&lib_SengokuRanceFont,
@@ -393,6 +416,7 @@ static struct static_library *static_libraries[] = {
 	&lib_SystemService,
 	&lib_SystemServiceEx,
 	&lib_Timer,
+	&lib_Toushin3Loader,
 	&lib_VSFile,
 	NULL
 };
@@ -457,16 +481,32 @@ static struct hll_function *link_static_library(struct ain_library *ainlib, stru
 			ERROR("Too many arguments to library function: %s", ainlib->functions[i].name);
 	}
 
+	return dst;
+}
+
+static void library_run(struct static_library *lib, const char *name)
+{
 	for (int i = 0; lib->functions[i].name; i++) {
-		if (!strcmp(lib->functions[i].name, "_ModuleInit")) {
+		if (!strcmp(lib->functions[i].name, name)) {
 			((void(*)(void))lib->functions[i].fun)();
 			break;
 		}
 	}
-	return dst;
 }
 
-void link_libraries(void)
+static void library_run_all(const char *name)
+{
+	for (int i = 0; i < ain->nr_libraries; i++) {
+		for (int j = 0; static_libraries[j]; j++) {
+			if (!strcmp(ain->libraries[i].name, static_libraries[j]->name)) {
+				library_run(static_libraries[j], name);
+				break;
+			}
+		}
+	}
+}
+
+static void link_libraries(void)
 {
 	if (libraries)
 		return;
@@ -485,24 +525,25 @@ void link_libraries(void)
 	}
 }
 
-void library_fini(struct static_library *lib)
+void init_libraries(void)
 {
-	for (int i = 0; lib->functions[i].name; i++) {
-		if (!strcmp(lib->functions[i].name, "_ModuleFini")) {
-			((void(*)(void))lib->functions[i].fun)();
-			break;
-		}
-	}
+	library_run_all("_PreLink");
+	link_libraries();
+	library_run_all("_ModuleInit");
 }
 
 void exit_libraries(void)
 {
-	for (int i = 0; i < ain->nr_libraries; i++) {
-		for (int j = 0; static_libraries[j]; j++) {
-			if (!strcmp(ain->libraries[i].name, static_libraries[j]->name)) {
-				library_fini(static_libraries[j]);
-				break;
-			}
+	library_run_all("_ModuleFini");
+}
+
+void static_library_replace(struct static_library *lib, const char *name, void *fun)
+{
+	for (int i = 0; lib->functions[i].name; i++) {
+		if (!strcmp(lib->functions[i].name, name)) {
+			lib->functions[i].fun = fun;
+			return;
 		}
 	}
+	ERROR("No library function '%s.%s'", lib->name, name);
 }

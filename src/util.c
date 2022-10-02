@@ -14,7 +14,9 @@
  * along with this program; if not, see <http://gnu.org/licenses/>.
  */
 
+#include <stdarg.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
 #include <time.h>
 #include <ctype.h>
@@ -152,8 +154,8 @@ void get_date(int *year, int *month, int *mday, int *wday)
 	time_t t = time(NULL);
 	struct tm *tm = localtime(&t);
 
-	*year  = tm->tm_year;
-	*month = tm->tm_mon;
+	*year  = tm->tm_year + 1900;
+	*month = tm->tm_mon + 1;
 	*mday  = tm->tm_mday;
 	*wday  = tm->tm_wday;
 }
@@ -167,6 +169,17 @@ void get_time(int *hour, int *min, int *sec, int *ms)
 
 	*hour = tm->tm_hour;
 	*min  = tm->tm_min;
-	*sec  = ts.tv_sec;
+	*sec  = tm->tm_sec;
 	*ms   = ts.tv_nsec / 1000000;
+}
+
+void indent_printf(int indent, const char *fmt, ...)
+{
+	for (int i = 0; i < indent; i++)
+		putchar('\t');
+
+	va_list ap;
+	va_start(ap, fmt);
+	vprintf(fmt, ap);
+	va_end(ap);
 }

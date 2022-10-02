@@ -26,10 +26,11 @@
 struct string;
 struct page;
 union vm_value;
+struct text_style;
 
 struct sact_sprite {
 	struct sprite sp;
-	TAILQ_ENTRY(sact_sprite) entry;
+	LIST_ENTRY(sact_sprite) entry;
 	// The sprite's texture (CG or solid color). Initialized lazily.
 	struct texture texture;
 	// If no CG is attached to the sprite, the solid color to fill with.
@@ -50,6 +51,8 @@ struct sact_sprite {
 	int no;
 	// The CG number attached to the sprite.
 	int cg_no;
+	// (optional) Draw plugin bound to this sprite.
+	struct draw_plugin *plugin;
 };
 
 static inline void sprite_dirty(struct sact_sprite *sp)
@@ -63,6 +66,7 @@ void sprite_set_cg(struct sact_sprite *sp, struct cg *cg);
 void sprite_set_cg_2x(struct sact_sprite *sp, struct cg *cg);
 int sprite_set_cg_from_asset(struct sact_sprite *sp, int cg_no);
 int sprite_set_cg_2x_from_asset(struct sact_sprite *sp, int cg_no);
+int sprite_set_cg_by_name(struct sact_sprite *sp, const char *name);
 int sprite_set_cg_from_file(struct sact_sprite *sp, const char *path);
 int sprite_save_cg(struct sact_sprite *sp, const char *path);
 void sprite_init(struct sact_sprite *sp, int w, int h, int r, int g, int b, int a);
@@ -88,7 +92,7 @@ void sprite_set_text_home(struct sact_sprite *sp, int x, int y);
 void sprite_set_text_line_space(struct sact_sprite *sp, int px);
 void sprite_set_text_char_space(struct sact_sprite *sp, int px);
 void sprite_set_text_pos(struct sact_sprite *sp, int x, int y);
-void sprite_text_draw(struct sact_sprite *sp, struct string *text, struct text_metrics *tm);
+void sprite_text_draw(struct sact_sprite *sp, struct string *text, struct text_style *ts);
 void sprite_text_clear(struct sact_sprite *sp);
 void sprite_text_home(struct sact_sprite *sp, int size);
 void sprite_text_new_line(struct sact_sprite *sp, int size);
@@ -103,5 +107,9 @@ bool sprite_is_point_in(struct sact_sprite *sp, int x, int y);
 bool sprite_is_point_in_rect(struct sact_sprite *sp, int x, int y);
 int sprite_get_amap_value(struct sact_sprite *sp, int x, int y);
 void sprite_get_pixel_value(struct sact_sprite *sp, int x, int y, int *r, int *g, int *b);
+void sprite_bind_plugin(struct sact_sprite *sp, struct draw_plugin *plugin);
+void sprite_call_plugins(void);
+
+void sprite_print(struct sact_sprite *sp);
 
 #endif /* SYSTEM4_SPRITE_H */

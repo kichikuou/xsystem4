@@ -14,6 +14,7 @@
  * along with this program; if not, see <http://gnu.org/licenses/>.
  */
 
+#include <stdlib.h>
 #include <math.h>
 #include <time.h>
 
@@ -28,6 +29,7 @@
 #include "input.h"
 #include "queue.h"
 #include "gfx/gfx.h"
+#include "gfx/font.h"
 #include "sact.h"
 #include "scene.h"
 #include "vm/page.h"
@@ -36,11 +38,14 @@
 
 static struct sact_sprite **sprites = NULL;
 static int nr_sprites = 0;
+static int view_mode;
+static bool use_power2_texture;
 
 static struct sact_sprite *sact_alloc_sprite(int sp)
 {
 	sprites[sp] = xcalloc(1, sizeof(struct sact_sprite));
 	sprites[sp]->no = sp;
+	sprites[sp]->sp.z2 = sp;
 	sprite_dirty(sprites[sp]);
 	return sprites[sp];
 }
@@ -68,8 +73,10 @@ static void realloc_sprite_table(int n)
 // NOTE: Used externally by DrawGraph, SengokuRanceFont and dungeon.c
 struct sact_sprite *sact_get_sprite(int sp)
 {
-	if (sp < -1)
+	if (sp < -1) {
+		WARNING("Invalid sprite number: %d", sp);
 		return NULL;
+	}
 	if (sp >= nr_sprites)
 		realloc_sprite_table(sp+256);
 	if (!sprites[sp]) {
@@ -144,7 +151,7 @@ int sact_GetMainSurfaceNumber(void)
 int sact_Update(void)
 {
 	handle_events();
-	dungeon_update();
+	sprite_call_plugins();
 	if (scene_is_dirty) {
 		scene_render();
 		gfx_swap();
@@ -155,7 +162,26 @@ int sact_Update(void)
 
 HLL_WARN_UNIMPLEMENTED(1, int, SACT2, EffectSetMask, int cg);
 //int SACT2_EffectSetMaskSP(int sp);
-HLL_WARN_UNIMPLEMENTED( , void, SACT2, QuakeScreen, int amp_x, int amp_y, int time, int key);
+
+void sact_QuakeScreen(int amp_x, int amp_y, int time, int key)
+{
+	Texture tex;
+	scene_render();
+	gfx_copy_main_surface(&tex);
+
+	Texture *dst = gfx_main_surface();
+
+	for (int i = 0; i < time; i+= 16) {
+		float rate = 1.0f - ((float)i / (float)time);
+		int delta_x = (rand() % amp_x - amp_x/2) * rate;
+		int delta_y = (rand() % amp_y - amp_y/2) * rate;
+		gfx_clear();
+		gfx_copy(dst, delta_x, delta_y, &tex, 0, 0, dst->w, dst->h);
+		gfx_swap();
+		SDL_Delay(16);
+	}
+}
+
 //void SACT2_QUAKE_SET_CROSS(int amp_x, int amp_y);
 //void SACT2_QUAKE_SET_ROTATION(int amp, int cycle);
 
@@ -206,36 +232,21 @@ int sact_SP_GetMaxZ(void)
 int sact_SP_SetCG(int sp_no, int cg_no)
 {
 	struct sact_sprite *sp = sact_get_sprite(sp_no);
-	if (!sp)
-		sact_SP_Create(sp_no, 1, 1, 0, 0, 0, 255);
-	if (!(sp = sact_get_sprite(sp_no))) {
-		WARNING("Failed to create sprite");
-		return 0;
-	}
+	if (!sp) return 0;
 	return sprite_set_cg_from_asset(sp, cg_no);
 }
 
 int sact_SP_SetCG2X(int sp_no, int cg_no)
 {
 	struct sact_sprite *sp = sact_get_sprite(sp_no);
-	if (!sp)
-		sact_SP_Create(sp_no, 1, 1, 0, 0, 0, 255);
-	if (!(sp = sact_get_sprite(sp_no))) {
-		WARNING("Failed to create sprite");
-		return 0;
-	}
+	if (!sp) return 0;
 	return sprite_set_cg_2x_from_asset(sp, cg_no);
 }
 
 int sact_SP_SetCGFromFile(int sp_no, struct string *filename)
 {
 	struct sact_sprite *sp = sact_get_sprite(sp_no);
-	if (!sp)
-		sact_SP_Create(sp_no, 1, 1, 0, 0, 0, 255);
-	if (!(sp = sact_get_sprite(sp_no))) {
-		WARNING("Failed to create sprite");
-		return 0;
-	}
+	if (!sp) return 0;
 	char *path = gamedir_path(filename->text);
 	int r = sprite_set_cg_from_file(sp, path);
 	free(path);
@@ -244,9 +255,8 @@ int sact_SP_SetCGFromFile(int sp_no, struct string *filename)
 
 int sact_SP_SaveCG(int sp_no, struct string *filename)
 {
-	struct sact_sprite *sp = sact_get_sprite(sp_no);
-	if (!sp)
-		return 0;
+	struct sact_sprite *sp = sact_try_get_sprite(sp_no);
+	if (!sp) return 0;
 	char *path = gamedir_path(filename->text);
 	int r = sprite_save_cg(sp, path);
 	free(path);
@@ -255,36 +265,27 @@ int sact_SP_SaveCG(int sp_no, struct string *filename)
 
 struct sact_sprite *sact_create_sprite(int sp_no, int width, int height, int r, int g, int b, int a)
 {
-	struct sact_sprite *sp;
-	if (sp_no < 0)
-		VM_ERROR("Invalid sprite number: %d", sp_no);
-	if (sp_no >= nr_sprites) {
-		realloc_sprite_table(sp_no+256);
-	}
-	if (!(sp = sact_get_sprite(sp_no)))
-		sp = sact_alloc_sprite(sp_no);
-
+	struct sact_sprite *sp = sact_get_sprite(sp_no);
+	if (!sp) return NULL;
 	sprite_init(sp, width, height, r, g, b, a);
 	return sp;
 }
 
 int sact_SP_Create(int sp_no, int width, int height, int r, int g, int b, int a)
 {
-	sact_create_sprite(sp_no, width, height, r, g, b, a);
-	return 1;
+	return !!sact_create_sprite(sp_no, width, height, r, g, b, a);
 }
 
 int sact_SP_CreatePixelOnly(int sp_no, int width, int height)
 {
-	sact_create_sprite(sp_no, width, height, 0, 0, 0, -1);
-	return 1;
+	return !!sact_create_sprite(sp_no, width, height, 0, 0, 0, -1);
 }
 
 //int SACT2_SP_CreateCustom(int sp);
 
 int sact_SP_Delete(int sp_no)
 {
-	struct sact_sprite *sp = sact_get_sprite(sp_no);
+	struct sact_sprite *sp = sact_try_get_sprite(sp_no);
 	if (!sp) return 0;
 	sact_free_sprite(sp);
 	return 1;
@@ -303,7 +304,7 @@ int sact_SP_DeleteAll(void)
 int sact_SP_SetPos(int sp_no, int x, int y)
 {
 	struct sact_sprite *sp = sact_get_sprite(sp_no);
-	if (!sp) return 1;
+	if (!sp) return 0;
 	sprite_set_pos(sp, x, y);
 	return 1;
 }
@@ -334,7 +335,7 @@ int sact_SP_SetZ(int sp_no, int z)
 
 int sact_SP_GetBlendRate(int sp_no)
 {
-	struct sact_sprite *sp = sact_get_sprite(sp_no);
+	struct sact_sprite *sp = sact_try_get_sprite(sp_no);
 	if (!sp) return 0;
 	return sprite_get_blend_rate(sp);
 }
@@ -449,7 +450,7 @@ int sact_SP_SetTextHome(int sp_no, int x, int y)
 int sact_SP_SetTextLineSpace(int sp_no, int px)
 {
 	struct sact_sprite *sp = sact_get_sprite(sp_no);
-	if (!sp) return 1;
+	if (!sp) return 0;
 	sprite_set_text_line_space(sp, px);
 	return 1;
 }
@@ -457,63 +458,72 @@ int sact_SP_SetTextLineSpace(int sp_no, int px)
 int sact_SP_SetTextCharSpace(int sp_no, int px)
 {
 	struct sact_sprite *sp = sact_get_sprite(sp_no);
-	if (!sp) return 1;
+	if (!sp) return 0;
 	sprite_set_text_char_space(sp, px);
 	return 1;
 }
 
 int sact_SP_SetTextPos(int sp_no, int x, int y)
 {
+	// XXX: In AliceSoft's implementation, this function succeeds even with
+	//      a negative sp_no...
 	struct sact_sprite *sp = sact_get_sprite(sp_no);
 	if (!sp) return 0;
 	sprite_set_text_pos(sp, x, y);
 	return 1;
 }
 
-static void init_text_metrics(struct text_metrics *tm, union vm_value *_tm)
+static void sact_text_metrics_to_text_style(struct text_style *ts, union vm_value *_tm)
 {
-	*tm = (struct text_metrics) {
+	*ts = (struct text_style) {
 		.color = {
 			.r = _tm[0].i,
 			.g = _tm[1].i,
 			.b = _tm[2].i,
 			.a = 255
 		},
-		.outline_color = {
+		.edge_color = {
 			.r = _tm[10].i,
 			.g = _tm[11].i,
 			.b = _tm[12].i,
 			.a = 255
 		},
-		.size          = _tm[3].i,
-		.weight        = _tm[4].i,
-		.face          = _tm[5].i,
-		.outline_left  = _tm[6].i,
-		.outline_up    = _tm[7].i,
-		.outline_right = _tm[8].i,
-		.outline_down  = _tm[9].i,
+		.size       = _tm[3].i,
+		.weight     = _tm[4].i,
+		.face       = _tm[5].i,
+		.edge_left  = _tm[6].i,
+		.edge_up    = _tm[7].i,
+		.edge_right = _tm[8].i,
+		.edge_down  = _tm[9].i,
+		.bold_width = 0.0f,
+		.scale_x = 1.0f,
+		.space_scale_x = 1.0f,
+		.font_spacing = 0.0f,
+		.font_size = NULL
 	};
 }
 
-int _sact_SP_TextDraw(int sp_no, struct string *text, struct text_metrics *tm)
+int _sact_SP_TextDraw(int sp_no, struct string *text, struct text_style *ts)
 {
+	// XXX: In AliceSoft's implementation, this function succeeds even with
+	//      a negative sp_no...
 	struct sact_sprite *sp = sact_get_sprite(sp_no);
 	if (!sp) return 0;
-	sprite_text_draw(sp, text, tm);
+	sprite_text_draw(sp, text, ts);
 	return 1;
 }
 
 int sact_SP_TextDraw(int sp_no, struct string *text, struct page *_tm)
 {
-	struct text_metrics tm;
-	init_text_metrics(&tm, _tm->values);
-	_sact_SP_TextDraw(sp_no, text, &tm);
+	struct text_style ts;
+	sact_text_metrics_to_text_style(&ts, _tm->values);
+	_sact_SP_TextDraw(sp_no, text, &ts);
 	return 1;
 }
 
 int sact_SP_TextClear(int sp_no)
 {
-	struct sact_sprite *sp = sact_get_sprite(sp_no);
+	struct sact_sprite *sp = sact_try_get_sprite(sp_no);
 	if (!sp) return 1; // always returns 1
 	sprite_text_clear(sp);
 	return 1;
@@ -539,17 +549,21 @@ int sact_SP_TextNewLine(int sp_no, int size)
 
 int sact_SP_TextCopy(int dno, int sno)
 {
-	struct sact_sprite *dsp = sact_get_sprite(dno);
-	struct sact_sprite *ssp = sact_get_sprite(sno);
-	if (!ssp)
-		return 0;
+	// XXX: the dest sprite gets allocated even if this function returns
+	//      0 because the source sprite doesn't exist
+	struct sact_sprite *dsp = sact_try_get_sprite(dno);
 	if (!dsp) {
-		sact_SP_Create(dno, 1, 1, 0, 0, 0, 0);
-		if (!(dsp = sact_get_sprite(dno))) {
-			WARNING("Failed to create sprite");
+		// FIXME? SP_GetWidth/SP_GetHeight return 0 in this case
+		dsp = sact_create_sprite(dno, 1, 1, 0, 0, 0, 0);
+		if (!dsp) {
+			WARNING("Failed to create sprite: %d", dno);
 			return 0;
 		}
 	}
+
+	struct sact_sprite *ssp = sact_try_get_sprite(sno);
+	if (!ssp)
+		return 0;
 
 	sprite_text_copy(dsp, ssp);
 	return 1;
@@ -705,10 +719,7 @@ HLL_WARN_UNIMPLEMENTED( , void, SACT2, JoypadQuake_Set, int num, int type, int m
 
 bool sact_Joypad_GetAnalogStickStatus(int num, int type, float *degree, float *power)
 {
-	//hll_unimplemented_warning(SACT2, Joypad_GetAnalogStickStatus);
-	*degree = 0.0;
-	*power  = 0.0;
-	return true;
+	return joy_get_stick_status(num, type, degree, power);
 }
 
 bool sact_Joypad_GetDigitalStickStatus(int num, int type, bool *left, bool *right, bool *up, bool *down)
@@ -735,7 +746,7 @@ int sact_Key_IsDown(int keycode)
 
 int sact_CG_IsExist(int cg_no)
 {
-	return asset_cg_exists(cg_no);
+	return asset_exists(ASSET_CG, cg_no);
 }
 
 //int  SACT2_CSV_Load(struct string *filename);
@@ -792,7 +803,7 @@ int SACT2_SP_GetBrightness(int sp_no)
 	    HLL_EXPORT(Effect, sact_Effect), \
 	    HLL_EXPORT(EffectSetMask, SACT2_EffectSetMask), \
 	    HLL_TODO_EXPORT(EffectSetMaskSP, SACT2_EffectSetMaskSP), \
-	    HLL_EXPORT(QuakeScreen, SACT2_QuakeScreen), \
+	    HLL_EXPORT(QuakeScreen, sact_QuakeScreen), \
 	    HLL_TODO_EXPORT(QUAKE_SET_CROSS, SACT2_QUAKE_SET_CROSS), \
 	    HLL_TODO_EXPORT(QUAKE_SET_ROTATION, SACT2_QUAKE_SET_ROTATION), \
 	    HLL_EXPORT(SP_GetUnuseNum, sact_SP_GetUnuseNum), \
@@ -899,15 +910,15 @@ int SACT2_SP_GetBrightness(int sp_no)
 	    HLL_EXPORT(Sound_Play, wav_play), \
 	    HLL_EXPORT(Sound_Stop, wav_stop), \
 	    HLL_EXPORT(Sound_IsPlay, wav_is_playing), \
-	    HLL_TODO_EXPORT(Sound_SetLoopCount, wav_set_loop_count), \
-	    HLL_TODO_EXPORT(Sound_GetLoopCount, wav_get_loop_count), \
+	    HLL_EXPORT(Sound_SetLoopCount, wav_set_loop_count), \
+	    HLL_EXPORT(Sound_GetLoopCount, wav_get_loop_count), \
 	    HLL_EXPORT(Sound_Fade, wav_fade), \
-	    HLL_TODO_EXPORT(Sound_StopFade, wav_stop_fade), \
-	    HLL_TODO_EXPORT(Sound_IsFade, wav_is_fade), \
-	    HLL_TODO_EXPORT(Sound_GetPos, wav_get_pos), \
-	    HLL_TODO_EXPORT(Sound_GetLength, wav_get_length), \
+	    HLL_EXPORT(Sound_StopFade, wav_stop_fade), \
+	    HLL_EXPORT(Sound_IsFade, wav_is_fading), \
+	    HLL_EXPORT(Sound_GetPos, wav_get_pos), \
+	    HLL_EXPORT(Sound_GetLength, wav_get_length), \
 	    HLL_EXPORT(Sound_ReverseLR, wav_reverse_LR), \
-	    HLL_TODO_EXPORT(Sound_GetVolume, wav_get_volume), \
+	    HLL_EXPORT(Sound_GetVolume, wav_get_volume), \
 	    HLL_EXPORT(Sound_GetTimeLength, wav_get_time_length), \
 	    HLL_TODO_EXPORT(Sound_GetGroupNum, SACT2_Sound_GetGroupNum), \
 	    HLL_TODO_EXPORT(Sound_PrepareFromFile, SACT2_Sound_PrepareFromFile), \
@@ -925,7 +936,6 @@ int SACT2_SP_GetBrightness(int sp_no)
 HLL_WARN_UNIMPLEMENTED( , void, SACTDX, SetVolumeMixerMasterGroupNum, int n);
 HLL_WARN_UNIMPLEMENTED( , void, SACTDX, SetVolumeMixerSEGroupNum, int n);
 HLL_WARN_UNIMPLEMENTED( , void, SACTDX, SetVolumeMixerBGMGroupNum, int n);
-HLL_WARN_UNIMPLEMENTED(0, int,  SACTDX, Sound_GetGroupNumFromDataNum, int n);
 //static int SACTDX_SP_CreateCopy(int nSP, int nSrcSp);
 //static bool SACTDX_Joypad_GetAnalogStickStatus(int nNum, int nType, ref float pfDegree, ref float pfPower);
 //static bool SACTDX_Joypad_GetDigitalStickStatus(int nNum, int nType, ref bool pbLeft, ref bool pbRight, ref bool pbUp, ref bool pbDown);
@@ -934,16 +944,33 @@ HLL_WARN_UNIMPLEMENTED(0, int,  SACTDX, Sound_GetGroupNumFromDataNum, int n);
 //static int SACTDX_Music_AnalyzeSampleData(ref array@float l, ref array@float r, ref array@int src, int chns, int bps);
 //static void SACTDX_Key_ClearFlagNoCtrl(void);
 //static void SACTDX_Key_ClearFlagOne(int nKeyCode);
-//static bool SACTDX_VIEW_SetMode(int nMode);
-//static int SACTDX_VIEW_GetMode(void);
-//static bool SACTDX_DX_GetUsePower2Texture(void);
-//static void SACTDX_DX_SetUsePower2Texture(bool bUse);
+
+static bool SACTDX_VIEW_SetMode(int mode)
+{
+	view_mode = mode;
+	return true;
+}
+
+static int SACTDX_VIEW_GetMode(void)
+{
+	return view_mode;
+}
+
+static bool SACTDX_DX_GetUsePower2Texture(void)
+{
+	return use_power2_texture;
+}
+
+static void SACTDX_DX_SetUsePower2Texture(bool use)
+{
+	use_power2_texture = use;
+}
 
 #define SACTDX_EXPORTS \
 	HLL_EXPORT(SetVolumeMixerMasterGroupNum, SACTDX_SetVolumeMixerMasterGroupNum), \
 	HLL_EXPORT(SetVolumeMixerSEGroupNum, SACTDX_SetVolumeMixerSEGroupNum), \
 	HLL_EXPORT(SetVolumeMixerBGMGroupNum, SACTDX_SetVolumeMixerBGMGroupNum), \
-	HLL_EXPORT(Sound_GetGroupNumFromDataNum, SACTDX_Sound_GetGroupNumFromDataNum), \
+	HLL_EXPORT(Sound_GetGroupNumFromDataNum, wav_get_group_num_from_data_num), \
 	HLL_TODO_EXPORT(SP_CreateCopy, SACTDX_SP_CreateCopy),	\
 	HLL_TODO_EXPORT(Joypad_GetAnalogStickStatus, SACTDX_Joypad_GetAnalogStickStatus), \
 	HLL_TODO_EXPORT(GetDigitalStickStatus, SACTDX_GetDigitalStickStatus), \
@@ -955,10 +982,10 @@ HLL_WARN_UNIMPLEMENTED(0, int,  SACTDX, Sound_GetGroupNumFromDataNum, int n);
 	HLL_EXPORT(TRANS_Begin, sact_TRANS_Begin),	    \
 	HLL_EXPORT(TRANS_Update, sact_TRANS_Update),	    \
 	HLL_EXPORT(TRANS_End, sact_TRANS_End),	\
-	HLL_TODO_EXPORT(VIEW_SetMode, SACTDX_VIEW_SetMode),	\
-	HLL_TODO_EXPORT(VIEW_GetMode, SACTDX_VIEW_GetMode),	\
-	HLL_TODO_EXPORT(DX_GetUsePower2Texture, SACTDX_DX_GetUsePower2Texture),	\
-	HLL_TODO_EXPORT(DX_SetUsePower2Texture, SACTDX_DX_SetUsePower2Texture)
+	HLL_EXPORT(VIEW_SetMode, SACTDX_VIEW_SetMode),	\
+	HLL_EXPORT(VIEW_GetMode, SACTDX_VIEW_GetMode),	\
+	HLL_EXPORT(DX_GetUsePower2Texture, SACTDX_DX_GetUsePower2Texture),	\
+	HLL_EXPORT(DX_SetUsePower2Texture, SACTDX_DX_SetUsePower2Texture)
 
 HLL_LIBRARY(SACT2, SACT_EXPORTS);
 HLL_LIBRARY(SACTDX, SACT_EXPORTS, SACTDX_EXPORTS);

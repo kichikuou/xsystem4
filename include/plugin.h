@@ -1,4 +1,4 @@
-/* Copyright (C) 2019 Nunuhara Cabbage <nunuhara@haniwa.technology>
+/* Copyright (C) 2022 kichikuou <KichikuouChrome@gmail.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -14,14 +14,15 @@
  * along with this program; if not, see <http://gnu.org/licenses/>.
  */
 
-uniform sampler2D tex;
-uniform float threshold;
+#ifndef SYSTEM4_PLUGIN_H
+#define SYSTEM4_PLUGIN_H
 
-in vec2 tex_coord;
-out vec4 frag_color;
+struct sact_sprite;
 
-void main() {
-        vec4 texel = texture(tex, tex_coord);
-        texel.a *= threshold;
-        frag_color = texel;
-}
+struct draw_plugin {
+	const char *name;
+	void (*update)(struct sact_sprite *);
+	void (*debug_print)(struct sact_sprite *, int indent);
+};
+
+#endif /* SYSTEM4_PLUGIN_H */

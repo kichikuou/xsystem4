@@ -39,6 +39,10 @@ static int anonymous_channels[NR_ANONYMOUS_CHANNELS];
 
 void audio_init(void)
 {
+	static bool audio_initialized = false;
+	if (audio_initialized)
+		return;
+
 	id_pool_init(&wav);
 	id_pool_init(&bgm);
 
@@ -47,6 +51,7 @@ void audio_init(void)
 	}
 
 	mixer_init();
+	audio_initialized = true;
 }
 
 void audio_update(void)
@@ -80,8 +85,8 @@ bool audio_play_sound(int sound_no)
 	return false;
 }
 
-bool wav_exists(int no) { return asset_exists(ASSET_SOUND, no-1); }
-bool bgm_exists(int no) { return asset_exists(ASSET_BGM, no-1); }
+bool wav_exists(int no) { return asset_exists(ASSET_SOUND, no); }
+bool bgm_exists(int no) { return asset_exists(ASSET_BGM, no); }
 
 static int audio_prepare(struct id_pool *pool, int id, enum asset_type type, int no)
 {
@@ -343,4 +348,10 @@ static int audio_prepare_from_archive_data(struct id_pool *pool, int id, struct 
 
 int wav_prepare_from_archive_data(int id, struct archive_data *dfile) {
 	return audio_prepare_from_archive_data(&wav, id, dfile);
+}
+
+int wav_get_group_num_from_data_num(int no)
+{
+	struct wai *wai = wai_get(no);
+	return wai ? wai->channel : 0;
 }

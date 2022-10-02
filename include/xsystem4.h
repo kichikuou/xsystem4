@@ -36,6 +36,8 @@ struct config {
 	char *bgi_path;
 	char *wai_path;
 	char *ex_path;
+	char *fnl_path;
+	char *font_paths[2];
 
 	bool joypad;
 	bool echo;
@@ -54,6 +56,8 @@ const char *display_utf0(const char *utf);
 const char *display_utf1(const char *utf);
 const char *display_utf2(const char *utf);
 
+void indent_printf(int indent, const char *fmt, ...);
+
 char *unix_path(const char *path);
 char *gamedir_path(const char *path);
 char *savedir_path(const char *path);
@@ -67,5 +71,9 @@ void get_time(int *hour, int *min, int *sec, int *ms);
 
 extern bool game_daibanchou_en;
 extern bool game_rance02_mg;
+extern bool game_rance6_mg;
+extern bool game_rance7_mg;
+
+extern bool id_indexed_afa;
 
 #endif /* XSYSTEM4_H */

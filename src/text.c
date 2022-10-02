@@ -14,14 +14,14 @@
  * along with this program; if not, see <http://gnu.org/licenses/>.
  */
 
-#include <SDL.h>
-#include <SDL_ttf.h>
 #include "system4.h"
+#include "system4/fnl.h"
+#include "system4/hashtable.h"
 #include "system4/string.h"
 #include "system4/utfsjis.h"
 
 #include "gfx/gfx.h"
-#include "gfx/types.h"
+#include "gfx/font.h"
 #include "xsystem4.h"
 
 /*
@@ -37,40 +37,286 @@
  *       styles and two different rendering modes (pixel map and alpha map)
  */
 
-#define MAX_FONT_SIZE 128
 #define DEFAULT_FONT_GOTHIC "fonts/VL-Gothic-Regular.ttf"
 #define DEFAULT_FONT_MINCHO "fonts/HanaMinA.ttf"
 
-static const char *local_font_paths[] = {
-	[FONT_GOTHIC] = DEFAULT_FONT_GOTHIC,
-	[FONT_MINCHO] = DEFAULT_FONT_MINCHO
+#define MAX_FONTS 32
+static struct font *fonts[MAX_FONTS] = {0};
+
+// Controls whether edge widths are taken into account during text layout.
+bool gfx_text_advance_edges = false;
+
+static struct font *load_font(enum font_face type)
+{
+	static const char *local_font_paths[] = {
+		[FONT_GOTHIC] = DEFAULT_FONT_GOTHIC,
+		[FONT_MINCHO] = DEFAULT_FONT_MINCHO
+	};
+	static const char *default_font_paths[] = {
+		[FONT_GOTHIC] = XSYS4_DATA_DIR "/" DEFAULT_FONT_GOTHIC,
+		[FONT_MINCHO] = XSYS4_DATA_DIR "/" DEFAULT_FONT_MINCHO
+	};
+
+	struct font *font;
+	// user specified font
+	if (config.font_paths[type] && (font = ft_font_load(config.font_paths[type])))
+		return font;
+	// installed default font
+	if ((font = ft_font_load(default_font_paths[type])))
+		return font;
+	// local default font
+	if ((font = ft_font_load(local_font_paths[type])))
+		return font;
+	ERROR("Failed to load %s font", type == FONT_GOTHIC ? "gothic" : "mincho");
+}
+
+static bool font_initialized = false;
+
+void gfx_font_init(void)
+{
+	if (font_initialized)
+		return;
+	if (config.fnl_path) {
+		struct fnl *fnl = fnl_open(config.fnl_path);
+		if (!fnl)
+			ERROR("Failed to load .fnl font library '%s'", config.fnl_path);
+		if (!fnl->nr_fonts)
+			ERROR("No fonts in .fnl font library '%s'", config.fnl_path);
+		for (unsigned i = 0; i < fnl->nr_fonts && i < MAX_FONTS; i++) {
+			fonts[i] = fnl_font_load(fnl, i);
+		}
+	} else {
+		ft_font_init();
+		fonts[FONT_GOTHIC] = load_font(FONT_GOTHIC);
+		fonts[FONT_MINCHO] = load_font(FONT_MINCHO);
+	}
+	font_initialized = true;
+}
+
+static unsigned get_face(unsigned face)
+{
+	if (game_rance7_mg) {
+		unsigned i = face - 256;
+		if (i >= MAX_FONTS || !fonts[i]) {
+			// XXX: Really not sure why this is how it works...
+			i = face == 1 ? 2 : 1;
+		}
+		face = i;
+	} else if (config.fnl_path) {
+		// TODO: check what actual games do here...
+		//       In Rance01Font.fnl:
+		//         fonts[0] is proportional sans/gothic
+		//         fonts[1] is monospace sans/gothic
+		//         fonts[2] is proportional serif/mincho
+		face += 1;
+	}
+	if (face >= MAX_FONTS || !fonts[face])
+		face = 0;
+	return face;
+}
+
+static struct font *get_font(unsigned face)
+{
+	return fonts[get_face(face)];
+}
+
+static struct font_size *font_get_size(unsigned face, float size)
+{
+	struct font *font = get_font(face);
+	return font->get_size(font, size);
+}
+
+static struct font_size *text_style_font_size(struct text_style *ts)
+{
+	if (ts->font_size)
+		return ts->font_size;
+	return ts->font_size = font_get_size(ts->face, ts->size);
+}
+
+static struct glyph *font_get_glyph(struct font_size *size, uint32_t code, enum font_weight weight)
+{
+	if (!size->glyph_table)
+		size->glyph_table = ht_create(4096);
+	// return cached glyph if available
+	struct ht_slot *slot = ht_put_int(size->glyph_table, code, NULL);
+	if (slot->value && ((struct glyph*)slot->value)->t[weight].handle)
+		return slot->value;
+	// alloc if necessary
+	if (!slot->value)
+		slot->value = xcalloc(1, sizeof(struct glyph));
+	// render glyph
+	if (!size->font->get_glyph(size, slot->value, code, weight))
+		return NULL;
+	return slot->value;
+}
+
+static float font_size_char(struct font_size *size, uint32_t code)
+{
+	return size->font->size_char(size, code);
+}
+
+static uint32_t char_to_code(const char *ch, enum charmap charmap)
+{
+	if (charmap == CHARMAP_SJIS)
+		return sjis_code(ch);
+	int c;
+	sjis_char2unicode(ch, &c);
+	if (c == '^' && game_rance02_mg)
+		return 0xE9; // é
+	// half-width katakana 'no' (ﾉ)
+	if (c == 0xFF89 && game_rance6_mg)
+		return 0xE9; // é
+	return c;
+}
+
+float gfx_size_char(struct text_style *ts, const char *ch)
+{
+	struct font_size *size = text_style_font_size(ts);
+	return font_size_char(size, char_to_code(ch, size->font->charmap));
+}
+
+float gfx_size_text(struct text_style *ts, const char *text)
+{
+	struct font_size *size = text_style_font_size(ts);
+	float edge_advance = gfx_text_advance_edges ? ts->edge_left + ts->edge_right : 0.0f;
+	float x = 0.0f;
+	while (*text) {
+		x += font_size_char(size, char_to_code(text, size->font->charmap));
+		x += edge_advance;
+		text = sjis_skip_char(text);
+	}
+	return x;
+}
+
+float gfx_get_actual_font_size(unsigned face, float size)
+{
+	struct font *font = get_font(face);
+	return font->get_actual_size(font, size);
+}
+
+float gfx_get_actual_font_size_round_down(unsigned face, float size)
+{
+	struct font *font = get_font(face);
+	return font->get_actual_size_round_down(font, size);
+}
+
+enum text_render_mode {
+	RENDER_BLENDED,
+	RENDER_PMAP,
+	RENDER_AMAP,
 };
 
-static const char *default_font_paths[] = {
-	[FONT_GOTHIC] = XSYS4_DATA_DIR "/" DEFAULT_FONT_GOTHIC,
-	[FONT_MINCHO] = XSYS4_DATA_DIR "/" DEFAULT_FONT_MINCHO
+struct text_render_metrics {
+	float x;
+	int y;
+	SDL_Color color;
+	enum font_weight weight;
+	float edge_width;
+	float scale_x;
+	float space_scale_x;
+	float font_spacing;
+	float edge_spacing;
+	enum text_render_mode mode;
+	struct font_size *font_size;
 };
 
-const char *font_paths[] = {
-	[FONT_GOTHIC] = XSYS4_DATA_DIR "/" DEFAULT_FONT_GOTHIC,
-	[FONT_MINCHO] = XSYS4_DATA_DIR "/" DEFAULT_FONT_MINCHO
-};
+static int render_text(Texture *dst, char *msg, struct text_render_metrics *tm)
+{
+	float pos_x = tm->x;
+	int pos_y = tm->y + tm->font_size->y_offset;
 
-struct font {
-	unsigned int size;
+	while (*msg) {
+		pos_x += tm->edge_spacing;
+		// get glyph for character
+		float scale_x = *msg == ' ' ? tm->space_scale_x : tm->scale_x;
+		uint32_t code = char_to_code(msg, tm->font_size->font->charmap);
+		msg += SJIS_2BYTE(*msg) ? 2 : 1;
+		struct glyph *glyph = font_get_glyph(tm->font_size, code, tm->weight);
+		if (!glyph)
+			continue;
+
+		// render glyph
+		Texture *t = &glyph->t[tm->weight];
+		if (tm->mode == RENDER_BLENDED) {
+			float x = pos_x - glyph->rect.x;
+			int y = pos_y - glyph->rect.y;
+			gfx_draw_glyph(dst, x, y, t, tm->color, config.text_x_scale, tm->edge_width);
+		} else if (tm->mode == RENDER_PMAP) {
+			gfx_draw_glyph_to_pmap(dst, pos_x, pos_y, t, glyph->rect, tm->color, config.text_x_scale);
+		} else if (tm->mode == RENDER_AMAP) {
+			gfx_draw_glyph_to_amap(dst, pos_x, pos_y, t, glyph->rect, config.text_x_scale);
+		}
+
+		// advance
+		pos_x += glyph->advance * scale_x * config.text_x_scale + tm->font_spacing;
+		pos_x += tm->edge_spacing;
+	}
+	return roundf(pos_x - tm->x);
+}
+
+static enum font_weight int_to_font_weight(int weight)
+{
+	// 0 -> 550 = LIGHT
+	if (weight <= 550)
+		return FONT_WEIGHT_NORMAL;
+	// 551 -> 999 = BOLD
+	if (weight <= 999)
+		return FONT_WEIGHT_BOLD;
+	// 1000 = LIGHT
+	if (weight == 1000)
+		return FONT_WEIGHT_NORMAL;
+	// x001 -> x550 = MEDIUM
+	// x551 -> x999 = HEAVY-BOLD
+	// NOTE: we don't distinguish between MEDIUM and BOLD (they are nearly identical)
+	return (weight % 1000) < 551 ? FONT_WEIGHT_BOLD : FONT_WEIGHT_HEAVY;
+}
+
+int gfx_render_text(Texture *dst, float x, int y, char *msg, struct text_style *ts)
+{
+	enum font_weight weight = int_to_font_weight(ts->weight);
+	struct font_size *font_size = text_style_font_size(ts);
+	float edge_width = text_style_edge_width(ts);
+	if (edge_width > 0.01f) {
+		struct text_render_metrics metrics = {
+			.x = x,
+			.y = y,
+			.color = ts->edge_color,
+			.weight = weight,
+			.edge_width = edge_width,
+			.scale_x = ts->scale_x,
+			.space_scale_x = ts->space_scale_x,
+			.font_spacing = ts->font_spacing,
+			.edge_spacing = gfx_text_advance_edges ? edge_width : 0.0,
+			.mode = RENDER_BLENDED,
+			.font_size = font_size,
+		};
+		render_text(dst, msg, &metrics);
+	}
+	struct text_render_metrics metrics = {
+		.x = x,
+		.y = y,
+		.color = ts->color,
+		.weight = weight,
+		.edge_width = ts->bold_width,
+		.scale_x = ts->scale_x,
+		.space_scale_x = ts->space_scale_x,
+		.font_spacing = ts->font_spacing,
+		.edge_spacing = gfx_text_advance_edges ? edge_width : 0.0,
+		.mode = RENDER_BLENDED,
+		.font_size = font_size,
+	};
+	return render_text(dst, msg, &metrics);
+}
+
+struct font_metrics {
+	int size;
 	enum font_face face;
-	int style;
-	TTF_Font *font;
+	int weight;
+	bool underline;
+	bool strikeout;
+	int space;
+	SDL_Color color;
 };
-
-struct _font {
-	unsigned int allocated;
-	struct font *fonts;
-};
-
-static struct _font font_table[2];
-
-static struct font *font;
 
 // current font state
 static struct font_metrics font_metrics = {
@@ -88,75 +334,39 @@ static struct font_metrics font_metrics = {
 	}
 };
 
-static TTF_Font *open_font(enum font_face face, unsigned int size)
+static void gfx_draw_text(Texture *dst, int x, int y, char *text, enum text_render_mode mode)
 {
-	TTF_Font *font;
-	// FIXME: face = 256 renders as a solid block for some reason...
-	if (face > 1)
-		face = 0;
-	if ((font = TTF_OpenFont(font_paths[face], size)))
-		return font;
-	if ((font = TTF_OpenFont(default_font_paths[face], size)))
-		return font;
-	return TTF_OpenFont(local_font_paths[face], size);
+	struct font_size *font_size = font_get_size(font_metrics.face, font_metrics.size);
+	struct text_render_metrics metrics = {
+		.x = x,
+		.y = y,
+		.color = font_metrics.color,
+		.weight = int_to_font_weight(font_metrics.weight),
+		.edge_width = 0.0f,
+		.scale_x = 1.0f,
+		.space_scale_x = 1.0f,
+		.font_spacing = font_metrics.space,
+		.mode = mode,
+		.font_size = font_size,
+	};
+	// TODO: underline and strikethrough
+	render_text(dst, text, &metrics);
 }
 
-bool gfx_set_font(enum font_face face, unsigned int size)
+void gfx_draw_text_to_amap(Texture *dst, int x, int y, char *text)
 {
-	struct _font *ff = &font_table[face];
-
-	if (size > MAX_FONT_SIZE) {
-		WARNING("Font size too large: %d", size);
-		return false;
-	}
-
-	// realloc if needed
-	if ((size+1) > ff->allocated) {
-		ff->fonts = xrealloc(ff->fonts, sizeof(struct font) * (size+1));
-		memset(ff->fonts + ff->allocated, 0, sizeof(struct font) * ((size+1) - ff->allocated));
-		ff->allocated = size+1;
-	}
-
-	// open font if needed
-	if (!ff->fonts[size].size) {
-		if (!(ff->fonts[size].font = open_font(face, size))) {
-			WARNING("Error opening font: %s:%d", font_paths[face], size);
-			return false;
-		}
-		ff->fonts[size].size = size;
-		ff->fonts[size].face = face;
-		ff->fonts[size].style = TTF_STYLE_NORMAL;
-	}
-
-	// set current font
-	font = &ff->fonts[size];
-	return true;
+	gfx_draw_text(dst, x, y, text, RENDER_AMAP);
 }
 
-static void set_font_style(int style)
+void gfx_draw_text_to_pmap(Texture *dst, int x, int y, char *text)
 {
-	if (font->style != style) {
-		TTF_SetFontStyle(font->font, style);
-		font->style = style;
-	}
-}
-
-static int get_font_style(void)
-{
-	int style = 0;
-	if (font_metrics.weight == FW_BOLD || font_metrics.weight == FW_BOLD2)
-		style |= TTF_STYLE_BOLD;
-	if (font_metrics.underline)
-		style |= TTF_STYLE_UNDERLINE;
-	if (font_metrics.strikeout)
-		style |= TTF_STYLE_STRIKETHROUGH;
-	return style ? style : TTF_STYLE_NORMAL;
+	gfx_draw_text(dst, x, y, text, RENDER_PMAP);
 }
 
 bool gfx_set_font_size(unsigned int size)
 {
 	font_metrics.size = size;
-	return gfx_set_font(font_metrics.face, size);
+	return true;
 }
 
 int gfx_get_font_size(void)
@@ -167,7 +377,7 @@ int gfx_get_font_size(void)
 bool gfx_set_font_face(enum font_face face)
 {
 	font_metrics.face = face;
-	return gfx_set_font(face, font_metrics.size);
+	return true;
 }
 
 enum font_face gfx_get_font_face(void)
@@ -243,201 +453,23 @@ void gfx_set_font_name(const char *name)
 	}
 }
 
-static void get_glyph(TTF_Font *f, Texture *dst, char *msg, SDL_Color color)
+void gfx_print_text_style(struct text_style *style, int indent)
 {
-	SDL_Surface *s = TTF_RenderUTF8_Blended(f, msg, color);
-	if (!s) {
-		WARNING("Text rendering failed: %s", display_utf0(msg));
-		return;
-	}
-	if (s->format->format != SDL_PIXELFORMAT_RGBA32) {
-		SDL_Surface *tmp = SDL_ConvertSurfaceFormat(s, SDL_PIXELFORMAT_RGBA32, 0);
-		SDL_FreeSurface(s);
-		s = tmp;
-	}
-	gfx_init_texture_with_pixels(dst, s->w, s->h, s->pixels);
-	SDL_FreeSurface(s);
-}
+	printf("{\n");
+	indent++;
 
-static void render_glyph(Texture *dst, Texture *glyph, Point pos)
-{
-	GLuint fbo = gfx_set_framebuffer(GL_DRAW_FRAMEBUFFER, dst, pos.x, pos.y, glyph->w, glyph->h);
+	indent_printf(indent, "face = %u,\n", style->face);
+	indent_printf(indent, "size = %f,\n", style->size);
+	indent_printf(indent, "bold_width = %f,\n", style->bold_width);
+	indent_printf(indent, "weight = %u,\n", style->weight);
+	indent_printf(indent, "edge_weight = {l=%f,u=%f,r=%f,d=%f},\n",
+			style->edge_left, style->edge_up, style->edge_right, style->edge_down);
+	indent_printf(indent, "color = "); gfx_print_color(&style->color); printf(",\n");
+	indent_printf(indent, "edge_color = "); gfx_print_color(&style->edge_color); printf(",\n");
+	indent_printf(indent, "scale_x = %f,\n", style->scale_x);
+	indent_printf(indent, "space_scale_x = %f,\n", style->space_scale_x);
+	indent_printf(indent, "font_spacing = %f,\n", style->font_spacing);
 
-	GLfloat mw_transform[16] = {
-		[0]  = glyph->w * config.text_x_scale,
-		[5]  = glyph->h,
-		[10] = 1,
-		[15] = 1
-	};
-	GLfloat wv_transform[16] = {
-		[0]  =  2.0 / glyph->w,
-		[5]  =  2.0 / glyph->h,
-		[10] =  2,
-		[12] = -1,
-		[13] = -1,
-		[15] =  1
-	};
-	struct gfx_render_job job = {
-		.texture = glyph->handle,
-		.world_transform = mw_transform,
-		.view_transform = wv_transform,
-		.data = glyph
-	};
-	gfx_render(&job);
-
-	gfx_reset_framebuffer(GL_DRAW_FRAMEBUFFER, fbo);
-}
-
-static int sact_to_sdl_fontstyle(int style)
-{
-	// FIXME:    0 - 550  is LIGHT
-	//         551 - 999  is BOLD
-	//               1000 is LIGHT
-	//        1001 - 1550 is MEDIUM
-	//        1551 - 1999 is HEAVY-BOLD
-	//        [THEN ALTERNATING MEDIUM/HEAVY-BOLD]
-	//
-	// SDL_ttf only has normal and bold...
-	style %= 1000;
-	return (style % 1000) < 551 ? 0 : TTF_STYLE_BOLD;
-}
-
-// NOTE: This is the SACT2 text rendering interface.
-// FIXME: Should use a separate background texture for outlines so that outlines never clip
-//        into previously rendered text.
-static int _gfx_render_text(Texture *dst, Point pos, char *msg, struct text_metrics *tm)
-{
-	if (!font)
-		return 0;
-	if (!msg[0])
-		return 0;
-	if (font->size != tm->size || font->face != tm->face)
-		gfx_set_font(tm->face, tm->size);
-
-	set_font_style(sact_to_sdl_fontstyle(tm->weight));
-
-	int width;
-	TTF_SizeUTF8(font->font, msg, &width, NULL);
-
-	pos.y -= (TTF_FontAscent(font->font) - font->size * 0.9);
-
-	glBlendEquationSeparate(GL_FUNC_ADD, GL_MAX);
-	if (tm->outline_left || tm->outline_up || tm->outline_right || tm->outline_down) {
-		Texture outline;
-		get_glyph(font->font, &outline, msg, tm->outline_color);
-		// XXX: This wont work if the outline size is larger than the stroke size
-		//      of the font itself.
-		if (tm->outline_left) {
-			Point p = { pos.x - tm->outline_left, pos.y };
-			render_glyph(dst, &outline, p);
-		}
-		if (tm->outline_up) {
-			Point p = { pos.x, pos.y - tm->outline_up };
-			render_glyph(dst, &outline, p);
-		}
-		if (tm->outline_right) {
-			Point p = { pos.x + tm->outline_right, pos.y };
-			render_glyph(dst, &outline, p);
-		}
-		if (tm->outline_down) {
-			Point p = { pos.x, pos.y + tm->outline_down };
-			render_glyph(dst, &outline, p);
-		}
-		gfx_delete_texture(&outline);
-	}
-
-	Texture glyph;
-	get_glyph(font->font, &glyph, msg, tm->color);
-	render_glyph(dst, &glyph, pos);
-	gfx_delete_texture(&glyph);
-	glBlendEquationSeparate(GL_FUNC_ADD, GL_FUNC_ADD);
-
-	return width;
-}
-
-static int extract_sjis_char(const char *src, char *dst)
-{
-	if (SJIS_2BYTE(*src)) {
-		dst[0] = src[0];
-		dst[1] = src[1];
-		dst[2] = '\0';
-		return 2;
-	}
-	dst[0] = src[0];
-	dst[1] = '\0';
-	return 1;
-}
-
-int gfx_render_text(Texture *dst, Point pos, char *msg, struct text_metrics *tm, int char_space)
-{
-	char c[4];
-
-	int original_x = pos.x;
-	while (*msg) {
-		int len = extract_sjis_char(msg, c);
-		if (msg[0] == '^' && game_rance02_mg) {
-			_gfx_render_text(dst, pos, "\xc3\xa9", tm);
-		} else {
-			char *utf = sjis2utf(c, len);
-			_gfx_render_text(dst, pos, utf, tm);
-			free(utf);
-		}
-		int advance = (len == 2 ? tm->size : tm->size / 2) + char_space;
-		pos.x += advance * config.text_x_scale;
-		msg += len;
-	}
-	return pos.x - original_x;
-}
-
-static void gfx_draw_text(Texture *dst, int x, int y, char *text)
-{
-	Point pos = { x, y };
-	while (*text) {
-		char c[4];
-		int len = extract_sjis_char(text, c);
-		char *conv = sjis2utf(c, len);
-		Texture glyph;
-
-		// render char
-		get_glyph(font->font, &glyph, conv, font_metrics.color);
-		render_glyph(dst, &glyph, pos);
-		gfx_delete_texture(&glyph);
-		free(conv);
-
-		// move next pos
-		int advance = (len == 2 ? font->size : font->size / 2) + font_metrics.space;
-		pos.x += advance * config.text_x_scale;
-		text += len;
-	}
-}
-
-void gfx_draw_text_to_amap(Texture *dst, int x, int y, char *text)
-{
-	if (!font)
-		return;
-
-	set_font_style(get_font_style());
-
-	glBlendFuncSeparate(GL_ZERO, GL_ONE, GL_ONE, GL_ZERO);
-	gfx_draw_text(dst, x, y, text);
-	glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ZERO);
-}
-
-void gfx_draw_text_to_pmap(Texture *dst, int x, int y, char *text)
-{
-	if (!font)
-		return;
-
-	set_font_style(get_font_style());
-
-	glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ZERO, GL_ONE);
-	gfx_draw_text(dst, x, y, text);
-	glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ZERO);
-}
-
-void gfx_font_init(void)
-{
-	if (TTF_Init() == -1)
-		ERROR("Failed to initialize SDL_ttf: %s", TTF_GetError());
-	gfx_set_font(FONT_GOTHIC, 16);
+	indent--;
+	indent_printf(indent, "}");
 }

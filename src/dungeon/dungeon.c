@@ -53,9 +53,14 @@
 #define ARCHIVE_OPEN_FLAGS ARCHIVE_MMAP
 #endif
 
+static void dungeon_render(struct sact_sprite *sp);
+
 struct dungeon_context *dungeon_context_create(enum draw_dungeon_version version, int surface)
 {
 	struct dungeon_context *ctx = xcalloc(1, sizeof(struct dungeon_context));
+	ctx->plugin.name = "DrawDungeon";
+	ctx->plugin.update = dungeon_render;
+	ctx->plugin.debug_print = NULL;
 	ctx->version = version;
 	ctx->surface = surface;
 	struct sact_sprite *sp = sact_get_sprite(ctx->surface);
@@ -64,6 +69,7 @@ struct dungeon_context *dungeon_context_create(enum draw_dungeon_version version
 
 	// Dungeon scene will be rendered to this texture.
 	struct texture *texture = sprite_get_texture(sp);
+	sprite_bind_plugin(sp, &ctx->plugin);
 
 	glGenRenderbuffers(1, &ctx->depth_buffer);
 	glBindRenderbuffer(GL_RENDERBUFFER, ctx->depth_buffer);
@@ -76,6 +82,10 @@ struct dungeon_context *dungeon_context_create(enum draw_dungeon_version version
 
 void dungeon_context_free(struct dungeon_context *ctx)
 {
+	struct sact_sprite *sp = sact_try_get_sprite(ctx->surface);
+	if (sp)
+		sprite_bind_plugin(sp, NULL);
+
 	if (ctx->dgn)
 		dgn_free(ctx->dgn);
 	if (ctx->dtx)
@@ -256,9 +266,11 @@ static void model_view_matrix(struct camera *camera, mat4 out)
 	glm_lookat(eye, camera->pos, up, out);
 }
 
-void dungeon_render(struct dungeon_context *ctx)
+static void dungeon_render(struct sact_sprite *sp)
 {
-	struct sact_sprite *sp = sact_get_sprite(ctx->surface);
+	struct dungeon_context *ctx = (struct dungeon_context *)sp->plugin;
+	if (!ctx->loaded || !ctx->draw_enabled)
+		return;
 	sprite_dirty(sp);
 	struct texture *texture = sprite_get_texture(sp);
 

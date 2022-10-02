@@ -36,16 +36,15 @@ enum asset_type {
 
 const char *asset_strtype(enum asset_type type);
 void asset_manager_init(void);
+bool asset_manager_load_archive(enum asset_type type, const char *archive_name);
 bool asset_exists(enum asset_type type, int no);
+bool asset_exists_by_name(enum asset_type type, const char *name, int *id_out);
 struct archive_data *asset_get(enum asset_type type, int no);
+struct archive_data *asset_get_by_name(enum asset_type type, const char *name, int *id_out);
 
-// FIXME: CG code should be refactored to read from buffer only, not archive,
-//        then caller can just use asset_get and cg_load
 struct cg *asset_cg_load(int no);
-struct cg *asset_cg_load_by_name(const char *name, int *no);
-int asset_cg_name_to_index(const char *name);
-bool asset_cg_exists(int no);
+struct cg *asset_cg_load_by_name(const char *name, int *id_out);
 bool asset_cg_get_metrics(int no, struct cg_metrics *metrics);
-void asset_cg_index_init(void);
+bool asset_cg_get_metrics_by_name(const char *name, struct cg_metrics *metrics);
 
 #endif /* SYSTEM4_ASSET_MANAGER_H */

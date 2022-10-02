@@ -37,18 +37,20 @@
  */
 
 static const char * const page_type_strtab[] = {
-	[GLOBAL_PAGE] = "globals",
-	[LOCAL_PAGE]  = "locals",
-	[STRUCT_PAGE] = "struct",
-	[ARRAY_PAGE]  = "array"
+	[GLOBAL_PAGE]   = "globals",
+	[LOCAL_PAGE]    = "locals",
+	[STRUCT_PAGE]   = "struct",
+	[ARRAY_PAGE]    = "array",
+	[DELEGATE_PAGE] = "delegate"
 };
 
 static enum page_type string_to_page_type(const char *str)
 {
-	if (!strcmp(str, "globals")) return GLOBAL_PAGE;
-	if (!strcmp(str, "locals"))  return LOCAL_PAGE;
-	if (!strcmp(str, "struct"))  return STRUCT_PAGE;
-	if (!strcmp(str, "array"))   return ARRAY_PAGE;
+	if (!strcmp(str, "globals"))  return GLOBAL_PAGE;
+	if (!strcmp(str, "locals"))   return LOCAL_PAGE;
+	if (!strcmp(str, "struct"))   return STRUCT_PAGE;
+	if (!strcmp(str, "array"))    return ARRAY_PAGE;
+	if (!strcmp(str, "delegate")) return DELEGATE_PAGE;
 	VM_ERROR("Invalid page type: %s", str);
 }
 
@@ -81,28 +83,28 @@ static cJSON *resume_page_to_json(struct page *page)
 	return json;
 }
 
+static cJSON *heap_item_to_json(int i, possibly_unused void *_)
+{
+	if (!heap[i].ref)
+		return NULL;
+
+	cJSON *item = cJSON_CreateArray();
+	cJSON_AddItemToArray(item, cJSON_CreateNumber(i));
+	cJSON_AddItemToArray(item, cJSON_CreateNumber(heap[i].ref));
+	switch (heap[i].type) {
+	case VM_PAGE:
+		cJSON_AddItemToArray(item, resume_page_to_json(heap[i].page));
+		break;
+	case VM_STRING:
+		cJSON_AddItemToArray(item, cJSON_CreateString(heap[i].s->text));
+		break;
+	}
+	return item;
+}
+
 static cJSON *heap_to_json(void)
 {
-	cJSON *json = cJSON_CreateArray();
-
-	for (size_t i = 0; i < heap_size; i++) {
-		if (!heap[i].ref)
-			continue;
-
-		cJSON *item = cJSON_CreateArray();
-		cJSON_AddItemToArray(item, cJSON_CreateNumber(i));
-		cJSON_AddItemToArray(item, cJSON_CreateNumber(heap[i].ref));
-		switch (heap[i].type) {
-		case VM_PAGE:
-			cJSON_AddItemToArray(item, resume_page_to_json(heap[i].page));
-			break;
-		case VM_STRING:
-			cJSON_AddItemToArray(item, cJSON_CreateString(heap[i].s->text));
-			break;
-		}
-		cJSON_AddItemToArray(json, item);
-	}
-	return json;
+	return cJSON_CreateArray_cb(heap_size, heap_item_to_json, NULL);
 }
 
 static cJSON *funcall_to_json(struct function_call *call)

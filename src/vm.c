@@ -208,9 +208,9 @@ static union vm_value *stack_pop_var(void)
 {
 	int32_t page_index = stack_pop().i;
 	int32_t heap_index = stack_pop().i;
-	if (!heap_index_valid(heap_index))
+	if (unlikely(!heap_index_valid(heap_index)))
 		VM_ERROR("Out of bounds heap index: %d/%d", heap_index, page_index);
-	if (!heap[heap_index].page || page_index >= heap[heap_index].page->nr_vars)
+	if (unlikely(!heap[heap_index].page || page_index >= heap[heap_index].page->nr_vars))
 		VM_ERROR("Out of bounds page index: %d/%d", heap_index, page_index);
 	return &heap[heap_index].page->values[page_index];
 }
@@ -247,6 +247,7 @@ union vm_value vm_copy(union vm_value v, enum ain_data_type type)
 	case AIN_STRING:
 		return (union vm_value) { .i = vm_string_ref(heap_get_string(v.i)) };
 	case AIN_STRUCT:
+	case AIN_DELEGATE:
 	case AIN_ARRAY_TYPE:
 		return (union vm_value) { .i = vm_copy_page(heap_get_page(v.i)) };
 	case AIN_REF_TYPE:
@@ -373,14 +374,8 @@ static void delegate_call(int dg_no)
 	// copy arguments into local page
 	struct ain_function_type *dg = &ain->delegates[dg_no];
 	for (int i = 0; i < dg->nr_arguments; i++) {
-		heap[slot].page->values[i] = stack_peek((dg->nr_arguments + 1) - i);
-		switch (dg->variables[i].type.data) {
-		case AIN_REF_TYPE:
-			heap_ref(heap[slot].page->values[i].i);
-			break;
-		default:
-			break;
-		}
+		union vm_value arg = stack_peek((dg->nr_arguments + 1) - i);
+		heap[slot].page->values[i] = vm_copy(arg, dg->variables[i].type.data);
 	}
 
 	call_stack[call_stack_ptr-1].struct_page = obj;
@@ -1527,7 +1522,8 @@ static enum opcode execute_instruction(enum opcode opcode)
 		//int functype = stack_pop().i;
 		stack_pop();
 		int str = stack_pop().i;
-		stack_pop_var()->i = get_function_by_name(heap_get_string(str)->text);
+		int fno = get_function_by_name(heap_get_string(str)->text);
+		stack_pop_var()->i = fno > 0 ? fno : 0;
 		stack_push(str);
 		break;
 	}
@@ -1688,8 +1684,12 @@ static enum opcode execute_instruction(enum opcode opcode)
 		union vm_value v = stack_pop();
 		int end = stack_pop().i;
 		int start = stack_pop().i;
-		int array = stack_pop_var()->i;
-		stack_push(array_find(heap[array].page, start, end, v, fno));
+		struct page *array = heap_get_page(stack_pop_var()->i);
+		stack_push(array_find(array, start, end, v, fno));
+		// FIXME: string key isn't freed if array is empty
+		if (array && array_type(array->a_type) == AIN_STRING) {
+			heap_unref(v.i);
+		}
 		break;
 	}
 	case A_REVERSE: {
@@ -1916,6 +1916,14 @@ static enum opcode execute_instruction(enum opcode opcode)
 		heap_string_assign(lval, heap_get_string(rval));
 		break;
 	}
+	case SH_A_FIND_SREF: {
+		union vm_value *v = stack_pop_var();
+		int end = stack_pop().i;
+		int start = stack_pop().i;
+		int array = stack_pop_var()->i;
+		stack_push(array_find(heap_get_page(array), start, end, *v, 0));
+		break;
+	}
 	case SH_SREF_EMPTY: {
 		stack_push(!heap_get_string(stack_pop_var()->i)->size);
 		break;
@@ -2072,7 +2080,14 @@ static enum opcode execute_instruction(enum opcode opcode)
 		array_sort_mem(heap[array].page, mno);
 		break;
 	}
-	//case DG_ADD:
+	case DG_ADD: {
+		int fun = stack_pop().i;
+		int obj = stack_pop().i;
+		int dg_i = stack_pop().i;
+		delete_page(dg_i);
+		heap_set_page(dg_i, delegate_new_from_method(obj, fun));
+		break;
+	}
 	case DG_SET: {
 		int fun = stack_pop().i;
 		int obj = stack_pop().i;
@@ -2112,8 +2127,8 @@ static enum opcode execute_instruction(enum opcode opcode)
 			}
 			stack_pop(); // dg_index
 			stack_pop(); // dg_page
-			for (int i = 0; i < ain->delegates[dg].nr_variables; i++) {
-				stack_pop(); // args
+			for (int i = ain->delegates[dg].nr_variables - 1; i >= 0; i--) {
+				variable_fini(stack_pop(), ain->delegates[dg].variables[i].type.data);
 			}
 			if (return_values) {
 				stack_push(r);
@@ -2124,11 +2139,23 @@ static enum opcode execute_instruction(enum opcode opcode)
 	}
 	case DG_NUMOF: {
 		int dg = stack_pop().i;
-		stack_push(delegate_numof(heap_get_page(dg)));
+		stack_push(delegate_numof(heap_get_delegate_page(dg)));
 		break;
 	}
-	//case DG_EXIST:
-	//case DG_ERASE:
+	case DG_EXIST: {
+		int fun = stack_pop().i;
+		int obj = stack_pop().i;
+		int dg_i = stack_pop().i;
+		stack_push(delegate_contains(heap_get_delegate_page(dg_i), obj, fun));
+		break;
+	}
+	case DG_ERASE: {
+		int fun = stack_pop().i;
+		int obj = stack_pop().i;
+		int dg_i = stack_pop().i;
+		delegate_erase(heap_get_delegate_page(dg_i), obj, fun);
+		break;
+	}
 	case DG_CLEAR: {
 		int slot = stack_pop().i;
 		if (!slot)
@@ -2224,7 +2251,7 @@ static void vm_execute(void)
 		uint16_t opcode;
 		if (instr_ptr == VM_RETURN)
 			return;
-		if (instr_ptr >= ain->code_size) {
+		if (unlikely(instr_ptr >= ain->code_size)) {
 			VM_ERROR("Illegal instruction pointer: 0x%08lX", instr_ptr);
 		}
 		opcode = get_opcode(instr_ptr);
@@ -2267,7 +2294,7 @@ int vm_execute_ain(struct ain *program)
 	call_stack_ptr = 0;
 
 	heap_init();
-	link_libraries();
+	init_libraries();
 
 	// Initialize globals
 	heap[0].ref = 1;
@@ -2342,63 +2369,13 @@ int vm_time(void)
 	return (ts.tv_sec * 1000) + (ts.tv_nsec / 1000000);
 }
 
-#ifdef DEBUG_HEAP
-static void describe_page(struct page *page)
-{
-	if (!page) {
-		sys_message("NULL_PAGE\n");
-		return;
-	}
-
-	char *u;
-	switch (page->type) {
-	case GLOBAL_PAGE:
-		sys_message("GLOBAL_PAGE\n");
-		break;
-	case LOCAL_PAGE:
-		sys_message("LOCAL_PAGE: %s\n", display_sjis0(ain->functions[page->index].name));
-		break;
-	case STRUCT_PAGE:
-		sys_message("STRUCT_PAGE: %s\n", display_sjis0(ain->structures[page->index].name));
-		break;
-	case ARRAY_PAGE:
-		sys_message("ARRAY_PAGE: %s\n", display_sjis0(ain_strtype(ain, page->a_type, page->array.struct_type)));
-		break;
-	case DELEGATE_PAGE:
-		// TODO: list function names
-		sys_message("DELEGATE_PAGE\n");
-		break;
-	}
-}
-
-static void describe_slot(size_t slot)
-{
-	sys_message("[%d](%d)(%08X)(%08X) = ", slot, heap[slot].ref, heap[slot].alloc_addr, heap[slot].ref_addr);
-	switch (heap[slot].type) {
-	case VM_PAGE:
-		describe_page(heap[slot].page);
-		break;
-	case VM_STRING:
-		if (heap[slot].s) {
-			sys_message("STRING: %s\n", display_sjis0(heap[slot].s->text));
-		} else {
-			sys_message("STRING: NULL\n");
-		}
-		break;
-	default:
-		sys_message("???\n");
-		break;
-	}
-}
-#endif
-
 noreturn void vm_exit(int code)
 {
 	vm_free();
 #ifdef DEBUG_HEAP
 	for (size_t i = 0; i < heap_size; i++) {
 		if (heap[i].ref > 0)
-			describe_slot(i);
+			heap_describe_slot(i);
 	}
 	sys_message("Number of leaked objects: %d\n", heap_free_ptr);
 #endif
