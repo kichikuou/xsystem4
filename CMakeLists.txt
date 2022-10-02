@@ -15,11 +15,11 @@ FetchContent_Declare(
   URL_HASH SHA1=18ce006cbf07502f48abfedc088c14404091f3d3
 )
 FetchContent_Declare(
-  SDL_ttf
-  URL https://github.com/libsdl-org/SDL_ttf/archive/refs/tags/release-2.0.18.tar.gz
-  URL_HASH SHA1=6fc5130757b447d46c3da6abd58687e8576de8b8
+  freetype
+  GIT_REPOSITORY https://github.com/freetype/freetype.git
+  GIT_TAG VER-2-12-1
 )
-FetchContent_MakeAvailable(cglm SDL SDL_ttf)
+FetchContent_MakeAvailable(cglm SDL freetype)
 
 add_library(ffi STATIC IMPORTED)
 set_target_properties(ffi PROPERTIES
@@ -55,7 +55,8 @@ target_sources(xsystem4 PRIVATE
   src/draw.c
   src/effect.c
   src/ffi.c
-  src/fnl_render.c
+  src/font_freetype.c
+  src/font_fnl.c
   src/format.c
   src/hacks.c
   src/heap.c
@@ -72,6 +73,13 @@ target_sources(xsystem4 PRIVATE
   src/video.c
   src/vm.c
 
+  src/3d/debug.c
+  src/3d/model.c
+  src/3d/parser.c
+  src/3d/particle.c
+  src/3d/reign.c
+  src/3d/renderer.c
+
   src/dungeon/dgn.c
   src/dungeon/dtx.c
   src/dungeon/dungeon.c
@@ -82,6 +90,7 @@ target_sources(xsystem4 PRIVATE
   src/dungeon/tes.c
 
   src/parts/construction.c
+  src/parts/debug.c
   src/parts/input.c
   src/parts/motion.c
   src/parts/parts.c
@@ -98,13 +107,16 @@ target_sources(xsystem4 PRIVATE
   src/hll/AnteaterADVEngine.c
   src/hll/BanMisc.c
   src/hll/Bitarray.c
+  src/hll/CGManager.c
   src/hll/CharSpriteManager.c
   src/hll/ChipmunkSpriteEngine.c
   src/hll/ChrLoader.c
   src/hll/CommonSystemData.c
   src/hll/Confirm.c
   src/hll/Confirm2.c
+  src/hll/Confirm3.c
   src/hll/CrayfishLogViewer.c
+  src/hll/Cursor.c
   src/hll/DataFile.c
   src/hll/DrawDungeon.c
   src/hll/DrawGraph.c
@@ -112,7 +124,9 @@ target_sources(xsystem4 PRIVATE
   src/hll/DrawPluginManager.c
   src/hll/DrawSimpleText.c
   src/hll/File.c
+  src/hll/File2.c
   src/hll/FileOperation.c
+  src/hll/FillAngle.c
   src/hll/GoatGUIEngine.c
   src/hll/Gpx2Plus.c
   src/hll/GUIEngine.c
@@ -128,6 +142,7 @@ target_sources(xsystem4 PRIVATE
   src/hll/Math.c
   src/hll/MapLoader.c
   src/hll/MenuMsg.c
+  src/hll/MonsterInfo.c
   src/hll/MsgLogManager.c
   src/hll/MsgLogViewer.c
   src/hll/MsgSkip.c
@@ -135,6 +150,7 @@ target_sources(xsystem4 PRIVATE
   src/hll/PassRegister.c
   src/hll/PlayDemo.c
   src/hll/PlayMovie.c
+  src/hll/ReignEngine.c
   src/hll/SACT2.c
   src/hll/SengokuRanceFont.c
   src/hll/SoundFilePlayer.c
@@ -143,12 +159,13 @@ target_sources(xsystem4 PRIVATE
   src/hll/SystemService.c
   src/hll/SystemServiceEx.c
   src/hll/Timer.c
+  src/hll/Toushin3Loader.c
   src/hll/VSFile.c
   )
 
 target_link_libraries(xsystem4 PRIVATE
-  m z SDL2 SDL2_ttf ffi GLESv3 cglm SndFile::sndfile sys4)
+  m z SDL2 freetype ffi GLESv3 cglm SndFile::sndfile sys4)
 
 target_compile_options(xsystem4 PRIVATE -Wno-unused-parameter)
 
-install(TARGETS xsystem4 SDL2_ttf)
+install(TARGETS xsystem4 freetype)
