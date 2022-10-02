@@ -39,6 +39,7 @@
 #include "debugger.h"
 #include "gfx/gfx.h"
 #include "gfx/font.h"
+#include "trace.h"
 #include "vm.h"
 
 #include "version.h"
@@ -414,6 +415,8 @@ enum {
 	LOPT_MSGSKIP_DELAY,
 	LOPT_SAVE_FOLDER,
 	LOPT_SAVE_FORMAT,
+	LOPT_TRACE_OUTPUT,
+	LOPT_TRACE_FUNCTION,
 #ifdef DEBUGGER_ENABLED
 	LOPT_NODEBUG,
 	LOPT_DEBUG,
@@ -441,6 +444,8 @@ int main(int argc, char *argv[])
 	char *joypad = NULL;
 	char *savedir = NULL;
 	char *debug_info_path = NULL;
+	char *trace_output = NULL;
+	char *trace_function = NULL;
 
 	while (1) {
 		static struct option long_options[] = {
@@ -456,6 +461,8 @@ int main(int argc, char *argv[])
 			{ "msgskip-delay", required_argument, 0, LOPT_MSGSKIP_DELAY },
 			{ "save-folder",   required_argument, 0, LOPT_SAVE_FOLDER },
 			{ "save-format",   required_argument, 0, LOPT_SAVE_FORMAT },
+			{ "trace",         required_argument, 0, LOPT_TRACE_OUTPUT },
+			{ "trace-function", required_argument, 0, LOPT_TRACE_FUNCTION },
 #ifdef DEBUGGER_ENABLED
 			{ "nodebug",       no_argument,       0, LOPT_NODEBUG },
 			{ "debug",         no_argument,       0, LOPT_DEBUG },
@@ -526,6 +533,12 @@ int main(int argc, char *argv[])
 			} else {
 				WARNING("Invalid value for --save-format option: \"%s\"", optarg);
 			}
+			break;
+		case LOPT_TRACE_OUTPUT:
+			trace_output = optarg;
+			break;
+		case LOPT_TRACE_FUNCTION:
+			trace_function = optarg;
 			break;
 #ifdef DEBUGGER_ENABLED
 		case LOPT_NODEBUG:
@@ -606,5 +619,9 @@ int main(int argc, char *argv[])
 		set_msgskip_delay(ain, config.msgskip_delay);
 	asset_manager_init();
 	dbg_init(debug_info_path);
+
+	if (trace_output)
+		trace_init(trace_output, trace_function);
+
 	sys_exit(vm_execute_ain(ain));
 }
