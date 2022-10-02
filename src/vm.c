@@ -2334,7 +2334,6 @@ int vm_execute_ain(struct ain *program)
 	stack_ptr = 0;
 	call_stack_ptr = 0;
 
-	trace_init();
 	heap_init();
 	init_libraries();
 

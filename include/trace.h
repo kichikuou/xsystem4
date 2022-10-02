@@ -14,6 +14,6 @@
  * along with this program; if not, see <http://gnu.org/licenses/>.
  */
 
-void trace_init(void);
+void trace_init(const char *output_path, const char *function_to_trace);
 void trace_begin(const char *name, const char *cat);
 void trace_end(void);
