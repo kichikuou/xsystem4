@@ -35,6 +35,7 @@
 #include "debugger.h"
 #include "input.h"
 #include "savedata.h"
+#include "trace.h"
 #include "vm.h"
 #include "vm/heap.h"
 #include "vm/page.h"
@@ -392,6 +393,7 @@ static int _function_call(int fno, int return_address)
 	// jump to function start
 	instr_ptr = ain->functions[fno].address;
 
+	trace_begin(f->name, "system4");
 	return slot;
 }
 
@@ -492,6 +494,7 @@ void vm_call(int fno, int struct_page)
 
 static void function_return(void)
 {
+	trace_end();
 	unref_call_frame(&call_stack[call_stack_ptr-1]);
 	instr_ptr = call_stack[call_stack_ptr-1].return_address;
 	call_stack_ptr--;
@@ -2445,6 +2448,7 @@ int vm_execute_ain(struct ain *program)
 	stack_ptr = 0;
 	call_stack_ptr = 0;
 
+	trace_init();
 	heap_init();
 	init_libraries();
 
