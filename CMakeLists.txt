@@ -77,6 +77,7 @@ target_sources(xsystem4 PRIVATE
   src/swf.c
   src/system4.c
   src/text.c
+  src/trace.c
   src/util.c
   src/video.c
   src/vm.c

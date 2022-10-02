@@ -21,6 +21,7 @@
 #include <ffi.h>
 #include "system4/ain.h"
 #include "system4/utfsjis.h"
+#include "trace.h"
 #include "vm.h"
 #include "vm/heap.h"
 #include "vm/page.h"
@@ -351,6 +352,8 @@ void hll_call(int libno, int fno)
 		}
 	}
 
+	trace_begin(f->name, ain->libraries[libno].name);
+
 	union vm_value r;
 #ifdef TRACE_HLL
 	trace_hll_call(&ain->libraries[libno], f, fun, &r, args);
@@ -358,6 +361,7 @@ void hll_call(int libno, int fno)
 	ffi_call(&fun->cif, (void*)fun->fun, &r, args);
 #endif
 
+	trace_end();
 
 	for (int i = 0, j = 0; i < f->nr_arguments; i++, j++) {
 		// XXX: We don't increase the ref count when passing ref arguments to HLL
