@@ -6,13 +6,13 @@ include(FetchContent)
 
 FetchContent_Declare(
   cglm
-  URL https://github.com/recp/cglm/archive/refs/tags/v0.8.4.tar.gz
-  URL_HASH SHA1=be3f7af2815afae259888630e1fc94625e0ba31b
+  URL https://github.com/recp/cglm/archive/refs/tags/v0.8.5.tar.gz
+  URL_HASH SHA1=d387b0fccf6a87b7139115c8ebfc87fa2433b3f0
 )
 FetchContent_Declare(
   SDL
-  URL https://libsdl.org/release/SDL2-2.0.20.tar.gz
-  URL_HASH SHA1=18ce006cbf07502f48abfedc088c14404091f3d3
+  URL https://github.com/libsdl-org/SDL/releases/download/release-2.24.1/SDL2-2.24.1.tar.gz
+  URL_HASH SHA1=6d48fa72f8ba46363ef205b005b4d14a69ffeac1
 )
 FetchContent_Declare(
   freetype
@@ -168,4 +168,4 @@ target_link_libraries(xsystem4 PRIVATE
 
 target_compile_options(xsystem4 PRIVATE -Wno-unused-parameter)
 
-install(TARGETS xsystem4 freetype)
+install(TARGETS xsystem4 SDL2 freetype)
