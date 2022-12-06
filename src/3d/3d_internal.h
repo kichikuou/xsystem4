@@ -42,10 +42,13 @@ struct model {
 	int nr_bones;
 	struct bone *bones;
 	struct hash_table *bone_map;  // bone id in POL/MOT -> struct bone *
+	struct hash_table *bone_name_map;  // bone name -> (struct bone * | NULL)
 	vec3 aabb[2];  // axis-aligned bounding box
+	bool has_transparent_material;
 };
 
 struct mesh {
+	uint32_t flags;
 	GLuint vao;
 	GLuint attr_buffer;
 	int nr_vertices;
@@ -53,6 +56,7 @@ struct mesh {
 };
 
 struct material {
+	uint32_t flags;
 	GLuint color_map;
 	GLuint specular_map;
 	GLuint alpha_map;
@@ -150,7 +154,7 @@ struct RE_renderer {
 	GLint ls_light_dir;
 	GLint ls_light_color;
 	GLint ls_sun_color;
-	GLint use_alpha_map;
+	GLint alpha_mode;
 	GLint alpha_texture;
 
 	GLuint billboard_vao;
@@ -367,8 +371,13 @@ enum pol_texture_type {
 	MAX_TEXTURE_TYPE
 };
 
+enum material_flags {
+	MATERIAL_SPRITE = 1 << 0,
+};
+
 struct pol_material {
 	char *name;
+	uint32_t flags;
 	char *textures[MAX_TEXTURE_TYPE];
 };
 
@@ -378,8 +387,14 @@ struct pol_material_group {
 	struct pol_material *children;
 };
 
+enum mesh_flags {
+	MESH_NOLIGHTING = 1 << 0,
+	MESH_ENVMAP     = 1 << 1,
+};
+
 struct pol_mesh {
 	char *name;
+	uint32_t flags;
 	uint32_t material;
 	uint32_t nr_vertices;
 	struct pol_vertex *vertices;

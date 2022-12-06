@@ -851,6 +851,14 @@ static enum opcode execute_instruction(enum opcode opcode)
 		stack_push(lhs_page == rhs_page && lhs_var == rhs_var ? 1 : 0);
 		break;
 	}
+	case R_NOTE: {
+		int rhs_var = stack_pop().i;
+		int rhs_page = stack_pop().i;
+		int lhs_var = stack_pop().i;
+		int lhs_page = stack_pop().i;
+		stack_push(lhs_page == rhs_page && lhs_var == rhs_var ? 0 : 1);
+		break;
+	}
 	case NEW: {
 		union vm_value v;
 		create_struct(stack_pop().i, &v);
@@ -917,7 +925,7 @@ static enum opcode execute_instruction(enum opcode opcode)
 		scenario_call(stack_pop().i);
 		break;
 	}
-	case MSG: {
+	case _MSG: {
 		if (config.echo)
 			echo_message(get_argument(0));
 		if (ain->msgf < 0)
@@ -925,7 +933,7 @@ static enum opcode execute_instruction(enum opcode opcode)
 		stack_push(get_argument(0));
 		stack_push(ain->nr_messages);
 		stack_push_string(string_ref(ain->messages[get_argument(0)]));
-		function_call(ain->msgf, instr_ptr + instruction_width(MSG));
+		function_call(ain->msgf, instr_ptr + instruction_width(_MSG));
 		break;
 	}
 	case JUMP: { // ADDR

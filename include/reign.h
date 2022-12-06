@@ -42,8 +42,15 @@ enum RE_motion_state {
 };
 
 enum RE_fog_type {
+	RE_FOG_NONE             = 0,
 	RE_FOG_LINEAR           = 1,
 	RE_FOG_LIGHT_SCATTERING = 2,
+};
+
+enum RE_draw_type {
+	RE_DRAW_TYPE_NORMAL   = 0,
+	RE_DRAW_TYPE_ADDITIVE = 1,
+	RE_DRAW_TYPE_MAX = RE_DRAW_TYPE_ADDITIVE
 };
 
 struct RE_options {
@@ -144,6 +151,9 @@ struct RE_instance {
 	float column_height;
 	float column_radius;
 	float column_angle;  // around the Y axis, in degrees
+
+	// Billboards
+	enum RE_draw_type draw_type;
 
 	// Lights
 	vec3 vec;

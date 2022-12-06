@@ -169,7 +169,7 @@ struct RE_plugin *RE_plugin_new(void)
 {
 	char *aar_path = gamedir_path("Data/ReignData.red");
 	int error = ARCHIVE_SUCCESS;
-	struct archive *aar = (struct archive *)aar_open(aar_path, ARCHIVE_MMAP, &error);
+	struct archive *aar = (struct archive *)aar_open(aar_path, MMAP_IF_64BIT, &error);
 	if (error == ARCHIVE_FILE_ERROR) {
 		WARNING("aar_open(\"%s\"): %s", display_utf0(aar_path), strerror(errno));
 	} else if (error == ARCHIVE_BAD_ARCHIVE_ERROR) {
@@ -188,7 +188,10 @@ struct RE_plugin *RE_plugin_new(void)
 	plugin->aar = aar;
 	for (int i = 0; i < RE_NR_BACK_CGS; i++)
 		RE_back_cg_init(&plugin->back_cg[i]);
-	plugin->fog_type = RE_FOG_LINEAR;
+	plugin->fog_type = RE_FOG_NONE;
+	plugin->fog_near = 1.0;
+	plugin->fog_far = 10.0;
+	glm_vec3_one(plugin->fog_color);
 	return plugin;
 }
 

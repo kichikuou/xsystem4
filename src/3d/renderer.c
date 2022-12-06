@@ -14,6 +14,7 @@
  * along with this program; if not, see <http://gnu.org/licenses/>.
  */
 
+#include <limits.h>
 #include <cglm/cglm.h>
 
 #include "system4.h"
@@ -42,6 +43,18 @@ enum {
 	DIFFUSE_EMISSIVE = 0,
 	DIFFUSE_NORMAL = 1,
 	DIFFUSE_LIGHT_MAP = 2,
+	DIFFUSE_ENV_MAP = 3,
+};
+
+enum {
+	ALPHA_BLEND = 0,
+	ALPHA_TEST = 1,
+	ALPHA_MAP_BLEND = 2,
+};
+
+enum draw_phase {
+	DRAW_OPAQUE,
+	DRAW_TRANSPARENT,
 };
 
 static GLuint load_shader(const char *vertex_shader_path, const char *fragment_shader_path)
@@ -200,7 +213,7 @@ struct RE_renderer *RE_renderer_new(struct texture *texture)
 	r->ls_light_dir = glGetUniformLocation(r->program, "ls_light_dir");
 	r->ls_light_color = glGetUniformLocation(r->program, "ls_light_color");
 	r->ls_sun_color = glGetUniformLocation(r->program, "ls_sun_color");
-	r->use_alpha_map = glGetUniformLocation(r->program, "use_alpha_map");
+	r->alpha_mode = glGetUniformLocation(r->program, "alpha_mode");
 	r->alpha_texture = glGetUniformLocation(r->program, "alpha_texture");
 
 	glGenRenderbuffers(1, &r->depth_buffer);
@@ -272,10 +285,14 @@ void RE_calc_view_matrix(struct RE_camera *camera, vec3 up, mat4 out)
 	glm_look(camera->pos, front, up, out);
 }
 
-static void render_model(struct RE_instance *inst, struct RE_renderer *r)
+static void render_model(struct RE_instance *inst, struct RE_renderer *r, enum draw_phase phase)
 {
 	struct model *model = inst->model;
 	if (!inst->model)
+		return;
+	bool all_transparent = inst->alpha < 1.0f;
+	bool all_opaque = !model->has_transparent_material && inst->alpha >= 1.0f;
+	if ((phase == DRAW_OPAQUE && all_transparent) || (phase == DRAW_TRANSPARENT && all_opaque))
 		return;
 
 	if (inst->local_transform_needs_update)
@@ -297,12 +314,20 @@ static void render_model(struct RE_instance *inst, struct RE_renderer *r)
 		glUniform1i(r->use_shadow_map, GL_FALSE);
 	}
 
+	glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ZERO, GL_ONE);
+
 	for (int i = 0; i < model->nr_meshes; i++) {
 		struct mesh *mesh = &model->meshes[i];
 		struct material *material = &model->materials[mesh->material];
+		bool is_transparent = material->alpha_map || inst->alpha < 1.0f;
+		if (phase != (is_transparent ? DRAW_TRANSPARENT : DRAW_OPAQUE))
+			continue;
+
+		glUniform1i(r->fog_type, (inst->plugin->fog_mode && !(mesh->flags & MESH_NOLIGHTING))
+			? inst->plugin->fog_type : 0);
 
 		GLboolean use_specular_map = GL_FALSE;
-		if (inst->plugin->specular_mode) {
+		if (inst->plugin->specular_mode && !(mesh->flags & MESH_NOLIGHTING)) {
 			glUniform1f(r->specular_strength, material->specular_strength);
 			glUniform1f(r->specular_shininess, material->specular_shininess);
 			if (material->specular_map) {
@@ -324,7 +349,11 @@ static void render_model(struct RE_instance *inst, struct RE_renderer *r)
 		glBindTexture(GL_TEXTURE_2D, material->color_map);
 		glUniform1i(r->texture, COLOR_TEXTURE_UNIT);
 
-		if (material->light_map && inst->plugin->light_map_mode) {
+		if (mesh->flags & MESH_ENVMAP) {
+			glUniform1i(r->diffuse_type, DIFFUSE_ENV_MAP);
+		} else if (mesh->flags & MESH_NOLIGHTING) {
+			glUniform1i(r->diffuse_type, DIFFUSE_EMISSIVE);
+		} else if (material->light_map && inst->plugin->light_map_mode) {
 			glUniform1i(r->diffuse_type, DIFFUSE_LIGHT_MAP);
 			glActiveTexture(GL_TEXTURE0 + LIGHT_TEXTURE_UNIT);
 			glBindTexture(GL_TEXTURE_2D, material->light_map);
@@ -343,12 +372,14 @@ static void render_model(struct RE_instance *inst, struct RE_renderer *r)
 		}
 
 		if (material->alpha_map) {
-			glUniform1i(r->use_alpha_map, GL_TRUE);
+			glUniform1i(r->alpha_mode, ALPHA_MAP_BLEND);
 			glActiveTexture(GL_TEXTURE0 + ALPHA_TEXTURE_UNIT);
 			glBindTexture(GL_TEXTURE_2D, material->alpha_map);
 			glUniform1i(r->alpha_texture, ALPHA_TEXTURE_UNIT);
+		} else if (material->flags & MATERIAL_SPRITE) {
+			glUniform1i(r->alpha_mode, ALPHA_TEST);
 		} else {
-			glUniform1i(r->use_alpha_map, GL_FALSE);
+			glUniform1i(r->alpha_mode, ALPHA_BLEND);
 		}
 
 		glBindVertexArray(mesh->vao);
@@ -358,15 +389,15 @@ static void render_model(struct RE_instance *inst, struct RE_renderer *r)
 	}
 }
 
-static void render_static_model(struct RE_instance *inst, struct RE_renderer *r)
+static void render_static_model(struct RE_instance *inst, struct RE_renderer *r, enum draw_phase phase)
 {
 	if (!inst->draw)
 		return;
 	glUniform1i(r->has_bones, GL_FALSE);
-	render_model(inst, r);
+	render_model(inst, r, phase);
 }
 
-static void render_skinned_model(struct RE_instance *inst, struct RE_renderer *r)
+static void render_skinned_model(struct RE_instance *inst, struct RE_renderer *r, enum draw_phase phase)
 {
 	if (!inst->draw)
 		return;
@@ -380,16 +411,19 @@ static void render_skinned_model(struct RE_instance *inst, struct RE_renderer *r
 	} else {
 		glUniform1i(r->has_bones, GL_FALSE);
 	}
-	render_model(inst, r);
+	render_model(inst, r, phase);
 }
 
-static void render_billboard(struct RE_instance *inst, struct RE_renderer *r, mat4 view_mat)
+static void render_billboard(struct RE_instance *inst, struct RE_renderer *r, mat4 view_mat, enum draw_phase phase)
 {
 	if (!inst->draw)
 		return;
 	int cg_no = inst->motion->current_frame;
 	struct billboard_texture *bt = ht_get_int(r->billboard_textures, cg_no, NULL);
 	if (!bt)
+		return;
+	bool is_transparent = bt->has_alpha || inst->alpha < 1.0f;
+	if (phase != (is_transparent ? DRAW_TRANSPARENT : DRAW_OPAQUE))
 		return;
 
 	mat4 local_transform;
@@ -419,7 +453,16 @@ static void render_billboard(struct RE_instance *inst, struct RE_renderer *r, ma
 	glUniform1i(r->diffuse_type, DIFFUSE_NORMAL);
 	glUniform1i(r->use_normal_map, GL_FALSE);
 	glUniform1i(r->use_shadow_map, GL_FALSE);
-	glUniform1i(r->use_alpha_map, GL_FALSE);
+	glUniform1i(r->alpha_mode, ALPHA_BLEND);
+	glUniform1i(r->fog_type, inst->plugin->fog_mode ? inst->plugin->fog_type : 0);
+	switch (inst->draw_type) {
+	case RE_DRAW_TYPE_NORMAL:
+		glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ZERO, GL_ONE);
+		break;
+	case RE_DRAW_TYPE_ADDITIVE:
+		glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE, GL_ZERO, GL_ONE);
+		break;
+	}
 
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, bt->texture);
@@ -470,8 +513,6 @@ static void render_billboard_particles(struct RE_renderer *r, struct RE_instance
 
 	glBindVertexArray(0);
 	glBindTexture(GL_TEXTURE_2D, 0);
-
-	glUniform1i(r->fog_type, inst->plugin->fog_type);
 }
 
 static void render_polygon_particles(struct RE_renderer *r, struct RE_instance *inst, struct particle_object *po, float frame)
@@ -481,6 +522,7 @@ static void render_polygon_particles(struct RE_renderer *r, struct RE_instance *
 		return;
 
 	glUniform1i(r->diffuse_type, DIFFUSE_NORMAL);
+	glUniform1i(r->fog_type, inst->plugin->fog_mode ? inst->plugin->fog_type : 0);
 
 	for (int index = 0; index < po->nr_particles; index++) {
 		struct particle_instance *pi = &po->instances[index];
@@ -512,10 +554,10 @@ static void render_polygon_particles(struct RE_renderer *r, struct RE_instance *
 	}
 }
 
-static void render_particle_effect(struct RE_instance *inst, struct RE_renderer *r)
+static void render_particle_effect(struct RE_instance *inst, struct RE_renderer *r, enum draw_phase phase)
 {
 	// NOTE: inst->draw flag has no effect for particle effects.
-	if (!inst->effect)
+	if (!inst->effect || phase == DRAW_OPAQUE)
 		return;
 
 	vec3 ambient;
@@ -529,7 +571,7 @@ static void render_particle_effect(struct RE_instance *inst, struct RE_renderer 
 	glUniform1f(r->rim_exponent, 0.0);
 	glUniform1i(r->use_normal_map, GL_FALSE);
 	glUniform1i(r->use_shadow_map, GL_FALSE);
-	glUniform1i(r->use_alpha_map, GL_FALSE);
+	glUniform1i(r->alpha_mode, ALPHA_BLEND);
 
 	glDepthMask(GL_FALSE);
 
@@ -557,8 +599,27 @@ static void render_particle_effect(struct RE_instance *inst, struct RE_renderer 
 			break;
 		}
 	}
-	glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ZERO, GL_ONE);
 	glDepthMask(GL_TRUE);
+}
+
+static void render_instance(struct RE_instance *inst, struct RE_renderer *r, mat4 view_mat, enum draw_phase phase)
+{
+	switch (inst->type) {
+	case RE_ITYPE_STATIC:
+		render_static_model(inst, r, phase);
+		break;
+	case RE_ITYPE_SKINNED:
+		render_skinned_model(inst, r, phase);
+		break;
+	case RE_ITYPE_BILLBOARD:
+		render_billboard(inst, r, view_mat, phase);
+		break;
+	case RE_ITYPE_PARTICLE_EFFECT:
+		render_particle_effect(inst, r, phase);
+		break;
+	default:
+		break;
+	}
 }
 
 static bool calc_shadow_light_transform(struct RE_plugin *plugin, mat4 dest)
@@ -704,6 +765,15 @@ static void setup_lights(struct RE_plugin *plugin)
 	}
 }
 
+static int cmp_instances_by_z(const void *lhs, const void *rhs)
+{
+	struct RE_instance *l = *(struct RE_instance **)lhs;
+	struct RE_instance *r = *(struct RE_instance **)rhs;
+	float lz = l ? l->pos[2] : FLT_MAX;
+	float rz = r ? r->pos[2] : FLT_MAX;
+	return (lz > rz) - (lz < rz);  // ascending order.
+}
+
 void RE_render(struct sact_sprite *sp)
 {
 	struct RE_plugin *plugin = (struct RE_plugin *)sp->plugin;
@@ -753,8 +823,9 @@ void RE_render(struct sact_sprite *sp)
 	glUniformMatrix4fv(r->shadow_transform, 1, GL_FALSE, shadow_transform[0]);
 	glUniform1f(r->shadow_bias, plugin->shadow_bias);
 	if (plugin->fog_mode) {
-		glUniform1i(r->fog_type, plugin->fog_type);
 		switch (plugin->fog_type) {
+		case RE_FOG_NONE:
+			break;
 		case RE_FOG_LINEAR:
 			glUniform1f(r->fog_near, plugin->fog_near);
 			glUniform1f(r->fog_far, plugin->fog_far);
@@ -767,36 +838,33 @@ void RE_render(struct sact_sprite *sp)
 			glUniform3fv(r->ls_sun_color, 1, plugin->ls_sun_color);
 			break;
 		}
-	} else {
-		glUniform1i(r->fog_type, 0);
 	}
 
 	glEnable(GL_BLEND);
-	glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ZERO, GL_ONE);
 
 	setup_lights(plugin);
 
-	for (int i = 0; i < plugin->nr_instances; i++) {
-		struct RE_instance *inst = plugin->instances[i];
+	// Sort instances by z-order.
+	struct RE_instance **sorted_instances = xmalloc(plugin->nr_instances * sizeof(struct RE_instance *));
+	memcpy(sorted_instances, plugin->instances, plugin->nr_instances * sizeof(struct RE_instance *));
+	qsort(sorted_instances, plugin->nr_instances, sizeof(struct RE_instance *), cmp_instances_by_z);
+
+	// Render opaque instances, from nearest to farthest.
+	for (int i = plugin->nr_instances - 1; i >= 0; i--) {
+		struct RE_instance *inst = sorted_instances[i];
 		if (!inst)
 			continue;
-		switch (inst->type) {
-		case RE_ITYPE_STATIC:
-			render_static_model(inst, r);
-			break;
-		case RE_ITYPE_SKINNED:
-			render_skinned_model(inst, r);
-			break;
-		case RE_ITYPE_BILLBOARD:
-			render_billboard(inst, r, view_transform);
-			break;
-		case RE_ITYPE_PARTICLE_EFFECT:
-			render_particle_effect(inst, r);
-			break;
-		default:
-			break;
-		}
+		render_instance(inst, r, view_transform, DRAW_OPAQUE);
 	}
+	// Render transparent instances, from nearest to farthest.
+	for (int i = 0; i < plugin->nr_instances; i++) {
+		struct RE_instance *inst = sorted_instances[i];
+		if (!inst)
+			continue;
+		render_instance(inst, r, view_transform, DRAW_TRANSPARENT);
+	}
+
+	free(sorted_instances);
 
 	plugin->proj_transform[1][1] *= -1;
 	glFrontFace(GL_CCW);
