@@ -45,14 +45,6 @@
 #define M_PI (3.14159265358979323846)
 #endif
 
-// On 32-bit android, mmap may fail to get a large contiguous virtual address
-// range. (See https://stackoverflow.com/questions/30180268)
-#if defined(__ANDROID__) && defined(__arm__)
-#define ARCHIVE_OPEN_FLAGS 0
-#else
-#define ARCHIVE_OPEN_FLAGS ARCHIVE_MMAP
-#endif
-
 static void dungeon_render(struct sact_sprite *sp);
 
 struct dungeon_context *dungeon_context_create(enum draw_dungeon_version version, int surface)
@@ -107,7 +99,7 @@ static GLuint *load_event_textures(int *nr_textures_out)
 {
 	char *path = gamedir_path("Data/Event.alk");
 	int error = ARCHIVE_SUCCESS;
-	struct alk_archive *alk = alk_open(path, ARCHIVE_OPEN_FLAGS, &error);
+	struct alk_archive *alk = alk_open(path, ARCHIVE_MMAP, &error);
 	if (error == ARCHIVE_FILE_ERROR) {
 		WARNING("alk_open(\"%s\"): %s", display_utf0(path), strerror(errno));
 	} else if (error == ARCHIVE_BAD_ARCHIVE_ERROR) {
@@ -154,7 +146,7 @@ bool dungeon_load(struct dungeon_context *ctx, int num)
 	if (ctx->version == DRAW_DUNGEON_1) {
 		char *path = gamedir_path("Data/DungeonData.dlf");
 		int error = ARCHIVE_SUCCESS;
-		struct archive *dlf = (struct archive *)dlf_open(path, ARCHIVE_OPEN_FLAGS, &error);
+		struct archive *dlf = (struct archive *)dlf_open(path, ARCHIVE_MMAP, &error);
 		if (error == ARCHIVE_FILE_ERROR) {
 			WARNING("dlf_open(\"%s\"): %s", display_utf0(path), strerror(errno));
 		} else if (error == ARCHIVE_BAD_ARCHIVE_ERROR) {
