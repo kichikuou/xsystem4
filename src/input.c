@@ -225,6 +225,21 @@ static void mouse_event(SDL_MouseButtonEvent *e)
 		key_state[code] = e->state == SDL_PRESSED;
 }
 
+static void synthetic_mouse_event(SDL_MouseButtonEvent *e)
+{
+	if (e->state == SDL_PRESSED) {
+		// Touch outside the viewport is treated as right-click.
+		SDL_Point p = { .x = e->x, .y = e->y };
+		if (SDL_PointInRect(&p, &sdl.viewport))
+			key_state[VK_LBUTTON] = true;
+		else
+			key_state[VK_RBUTTON] = true;
+	} else {
+		key_state[VK_LBUTTON] = false;
+		key_state[VK_RBUTTON] = false;
+	}
+}
+
 #define JOYAXIS_DEADZONE 13500
 
 enum joyaxis_axis {
@@ -480,7 +495,7 @@ void handle_events(void)
 {
 	// Flush the deferred mouse button event if it's older than 20ms.
 	if (deferred_synthetic_mouse_event.timestamp && deferred_synthetic_mouse_event.timestamp + SYNTHETIC_MOUSE_EVENT_DELAY < SDL_GetTicks()) {
-		mouse_event(&deferred_synthetic_mouse_event);
+		synthetic_mouse_event(&deferred_synthetic_mouse_event);
 		deferred_synthetic_mouse_event.timestamp = 0;
 	}
 
@@ -525,7 +540,7 @@ void handle_events(void)
 		case SDL_MOUSEBUTTONDOWN:
 			if (e.button.which == SDL_TOUCH_MOUSEID) {
 				if (deferred_synthetic_mouse_event.timestamp)
-					mouse_event(&deferred_synthetic_mouse_event);
+					synthetic_mouse_event(&deferred_synthetic_mouse_event);
 				deferred_synthetic_mouse_event = e.button;
 			} else {
 				mouse_event(&e.button);
