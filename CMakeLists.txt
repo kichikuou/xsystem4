@@ -62,6 +62,7 @@ target_sources(xsystem4 PRIVATE
   src/heap.c
   src/id_pool.c
   src/input.c
+  src/movie.c
   src/page.c
   src/resume.c
   src/savedata.c
@@ -122,7 +123,6 @@ target_sources(xsystem4 PRIVATE
   src/hll/DrawDungeon.c
   src/hll/DrawGraph.c
   src/hll/DrawMovie.c
-  src/hll/DrawMovie2.c
   src/hll/DrawPluginManager.c
   src/hll/DrawSimpleText.c
   src/hll/File.c
