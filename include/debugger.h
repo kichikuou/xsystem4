@@ -39,6 +39,7 @@ struct breakpoint {
 struct dbg_cmd {
 	const char *fullname;
 	const char *shortname;
+	const char *arg_description;
 	const char *description;
 	unsigned min_args;
 	unsigned max_args;
@@ -62,9 +63,11 @@ void dbg_cmd_add_module(const char *name, unsigned nr_commands, struct dbg_cmd *
 void dbg_handle_breakpoint(void);
 bool dbg_set_function_breakpoint(const char *_name, void(*cb)(struct breakpoint*), void *data);
 bool dbg_set_address_breakpoint(uint32_t address, void(*cb)(struct breakpoint*), void *data);
+bool dbg_set_step_over_breakpoint(void);
+bool dbg_set_step_into_breakpoint(void);
+bool dbg_set_finish_breakpoint(void);
 void dbg_print_frame(unsigned no);
 void dbg_print_stack_trace(void);
-void dbg_print_dasm(void);
 void dbg_print_stack(void);
 void dbg_print_vm_state(void);
 struct ain_variable *dbg_get_member(const char *name, union vm_value *val_out);

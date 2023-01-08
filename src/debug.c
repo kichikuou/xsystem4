@@ -114,6 +114,20 @@ static void add_breakpoint(uint32_t addr, struct breakpoint *bp)
 	slot->value = bp;
 }
 
+static void delete_breakpoint(uint32_t addr, struct breakpoint *bp)
+{
+	// restore opcode
+	LittleEndian_putW(ain->code, addr, bp->restore_op);
+
+	// remove from hash table
+	struct ht_slot *slot = ht_put_int(bp_table, addr, NULL);
+	assert(slot->value == bp);
+	slot->value = NULL;
+
+	free(bp->message);
+	free(bp);
+}
+
 static struct breakpoint *get_breakpoint(uint32_t addr)
 {
 	if (!bp_table)
@@ -172,6 +186,195 @@ bool dbg_set_address_breakpoint(uint32_t address, void(*cb)(struct breakpoint*),
 	add_breakpoint(address, bp);
 
 	printf("Set breakpoint at 0x%08x\n", address);
+	return true;
+}
+
+static void dbg_step_breakpoint_cb(struct breakpoint *bp)
+{
+	// XXX: mutually recursive functions could trigger breakpoint early.
+	//      use size of call stack to check for this case
+	if ((intptr_t)bp->data != call_stack_ptr)
+		return;
+	delete_breakpoint(instr_ptr, bp);
+	dbg_cmd_repl();
+}
+
+static void dbg_set_step_breakpoint(int32_t address, int call_index)
+{
+	// if a breakpoint is already set on the next address, leave it
+	enum opcode op = LittleEndian_getW(ain->code, address);
+	if ((op & OPTYPE_MASK) == BREAKPOINT)
+		return;
+
+	struct breakpoint *bp = xcalloc(1, sizeof(struct breakpoint));
+	bp->restore_op = op & ~OPTYPE_MASK;
+	assert(bp->restore_op >= 0 && bp->restore_op < NR_OPCODES);
+	bp->cb = dbg_step_breakpoint_cb;
+	bp->data = (void*)(intptr_t)call_index;
+	bp->message = NULL;
+	LittleEndian_putW(ain->code, address, BREAKPOINT | bp->restore_op);
+	add_breakpoint(address, bp);
+}
+
+static int32_t get_function_address(int fno)
+{
+	assert(fno > 0 && fno < ain->nr_functions);
+	return ain->functions[fno].address;
+}
+
+/* Determine the next address at the current instruction. */
+static int32_t dbg_next_address(bool into, int *call_index)
+{
+	*call_index = call_stack_ptr;
+	enum opcode current = LittleEndian_getW(ain->code, instr_ptr) & ~OPTYPE_MASK;
+	assert(current >= 0 && current < NR_OPCODES);
+	switch (current) {
+	case JUMP:
+		return get_argument(0);
+	case IFZ:
+		if (stack_peek(0).i == 0)
+			return get_argument(0);
+		break;
+	case IFNZ:
+		if (stack_peek(0).i)
+			return get_argument(0);
+		break;
+	case RETURN: {
+		*call_index = call_stack_ptr-1;
+		return call_stack[call_stack_ptr-1].return_address;
+	}
+	case _MSG:
+		if (!into)
+			break;
+		// TODO: step into message function
+		return -1;
+	case SWITCH:
+		return get_switch_address(get_argument(0), stack_peek(0).i);
+	case STRSWITCH:
+		return get_strswitch_address(get_argument(0), heap_get_string(stack_peek(0).i));
+	case SJUMP: {
+		if (!into)
+			break;
+		// XXX: can't determine RETURN address of scenario call (VM_RETURN)
+		return -1;
+		/*
+		int fno = heap[stack_peek(0).i].page->index;
+		return ain->functions[fno].address;
+		*/
+	}
+	case CALLFUNC:
+	case CALLMETHOD:
+	case THISCALLMETHOD_NOPARAM:
+		if (!into)
+			break;
+		*call_index = call_stack_ptr + 1;
+		return get_function_address(get_argument(0));
+	case CALLFUNC2:
+		if (!into)
+			break;
+		*call_index = call_stack_ptr + 1;
+		return get_function_address(stack_peek(1).i);
+	case SH_IF_LOC_LT_IMM:
+		if (local_get(get_argument(0)).i < get_argument(1))
+			return get_argument(2);
+		break;
+	case SH_IF_LOC_GE_IMM:
+		if (local_get(get_argument(0)).i >= get_argument(1))
+			return get_argument(2);
+		break;
+	case SH_IF_STRUCTREF_NE_LOCALREF:
+		if (member_get(get_argument(0)).i != local_get(get_argument(1)).i)
+			return get_argument(2);
+		break;
+	case SH_IF_STRUCTREF_GT_IMM:
+		if (member_get(get_argument(0)).i > get_argument(1))
+			return get_argument(2);
+		break;
+	case SH_STRUCTREF2_CALLMETHOD_NO_PARAM:
+		if (!into)
+			break;
+		*call_index = call_stack_ptr + 1;
+		return get_function_address(get_argument(2));
+	case SH_IF_STRUCTREF_Z:
+		if (!member_get(get_argument(0)).i)
+			return get_argument(1);
+		break;
+	case SH_IF_STRUCT_A_NOT_EMPTY: {
+		struct page *array = heap_get_page(member_get(get_argument(0)).i);
+		if (array && array->nr_vars)
+			return get_argument(1);
+		break;
+	}
+	case SH_IF_LOC_GT_IMM:
+		if (local_get(get_argument(0)).i > get_argument(1))
+			return get_argument(2);
+		break;
+	case SH_IF_STRUCTREF_NE_IMM:
+		if (member_get(get_argument(0)).i != get_argument(1))
+			return get_argument(2);
+		break;
+	case SH_IF_STRUCTREF_EQ_IMM:
+		if (member_get(get_argument(0)).i == get_argument(1))
+			return get_argument(2);
+		break;
+	case SH_IF_SREF_NE_STR0: {
+		struct string *a = heap_get_string(stack_peek_var()->i);
+		struct string *b = ain->strings[get_argument(0)];
+		if (strcmp(a->text, b->text))
+			return get_argument(1);
+		break;
+	}
+	case DG_CALL: {
+		if (!into)
+			return get_argument(1);
+		// XXX: can't determine RETURN address of delegate call (VM_RETURN)
+		return -1;
+	}
+	default:
+		// XXX: catch any unhandled control-flow instructions
+		if (instructions[current].ip_inc == 0)
+			return -1;
+		break;
+	}
+	return instr_ptr + instruction_width(current);
+}
+
+bool dbg_set_step_over_breakpoint(void)
+{
+	if (instr_ptr <= 0)
+		return false;
+
+	int call_index;
+	int32_t address = dbg_next_address(false, &call_index);
+	if (address < 0)
+		return false;
+	dbg_set_step_breakpoint(address, call_index);
+	return true;
+}
+
+bool dbg_set_step_into_breakpoint(void)
+{
+	if (instr_ptr <= 0)
+		return false;
+
+	int call_index;
+	int32_t address = dbg_next_address(true, &call_index);
+	if (address < 0)
+		return false;
+	dbg_set_step_breakpoint(address, call_index);
+	return true;
+}
+
+bool dbg_set_finish_breakpoint(void)
+{
+	if (call_stack_ptr < 2)
+		return false;
+
+	int32_t address = call_stack[call_stack_ptr-1].return_address;
+	// XXX: VM_RETURN
+	if (address < 0)
+		return false;
+	dbg_set_step_breakpoint(address, call_stack_ptr - 1);
 	return true;
 }
 
@@ -365,6 +568,9 @@ struct string *dbg_value_to_string(struct ain_type *type, union vm_value value, 
 // Rewind to DASM_REWIND instructions before the current instruction pointer.
 static bool dbg_init_dasm(struct dasm *dasm)
 {
+	if (call_stack_ptr < 1)
+		goto error;
+
 	unsigned addr_i = 0;
 	size_t addr[DASM_REWIND] = {0};
 	int fno = call_stack[call_stack_ptr-1].fno;
@@ -455,6 +661,7 @@ static void dbg_print_local(struct dasm *dasm, int32_t n)
 
 static void dbg_print_arg(struct dasm *dasm, int n)
 {
+	static int hll = 0;
 	int32_t value = dasm_arg(dasm, n);
 	switch (dasm_arg_type(dasm, n)) {
 	case T_INT:
@@ -515,13 +722,20 @@ static void dbg_print_arg(struct dasm *dasm, int n)
 			printf("%s", syscalls[value].name);
 		break;
 	case T_HLL:
-		if (value < 0 || value >= ain->nr_libraries)
+		if (value < 0 || value >= ain->nr_libraries) {
 			printf("<invalid library number: %d>", value);
-		else
+		} else {
 			dbg_print_identifier(ain->libraries[value].name);
+			hll = value;
+		}
 		break;
 	case T_HLLFUNC:
-		printf("%d", value);
+		if (hll < 0 || hll >= ain->nr_libraries)
+			printf("%d", value);
+		else if (value < 0 || value >= ain->libraries[hll].nr_functions)
+			printf("<invalid library function number: %d>", value);
+		else
+			dbg_print_identifier(ain->libraries[hll].functions[value].name);
 		break;
 	case T_FILE:
 		if (!ain->nr_filenames)
@@ -545,44 +759,67 @@ static void dbg_print_instruction(struct dasm *dasm)
 		putchar(' ');
 		dbg_print_arg(dasm, i);
 	}
-	putchar('\n');
 }
 
-void dbg_print_dasm(void)
+static bool stack_print_finished(int stack_i)
 {
+	return stack_i >= stack_ptr;
+}
+
+static bool dasm_print_finished(struct dasm *dasm, int dasm_i)
+{
+	if (dasm_eof(dasm))
+		return true;
+	if (dasm_addr(dasm) < instr_ptr)
+		return false;
+	if (dasm_i < DASM_FWD)
+		return false;
+	return true;
+}
+
+#define STACK_MAX (DASM_REWIND + DASM_FWD)
+
+void dbg_print_vm_state(void)
+{
+	if (call_stack_ptr < 1) {
+		DBG_ERROR("VM not running");
+		return;
+	}
+
+	puts("");
+	puts("     Stack           Disassembly");
+	puts("-----------------    -----------");
+
 	struct dasm dasm;
 	if (!dbg_init_dasm(&dasm))
 		return;
 
-	for (; dasm_addr(&dasm) < instr_ptr && !dasm_eof(&dasm); dasm_next(&dasm)) {
-		dbg_print_instruction(&dasm);
-	}
-
-	for (int i = 0; i < DASM_FWD && !dasm_eof(&dasm); dasm_next(&dasm), i++) {
-		dbg_print_instruction(&dasm);
-	}
-}
-
-#define STACK_MAX 16
-
-void dbg_print_stack(void)
-{
-	int i = 0;
+	int stack_i = 0;
 	if (stack_ptr > STACK_MAX)
-		i = stack_ptr - STACK_MAX;
+		stack_i = stack_ptr - STACK_MAX;
 
-	for (; i < stack_ptr; i++) {
-		printf(" [%d]: 0x%08x\n", i, stack[i].i);
+	int dasm_i = 0;
+	while (!stack_print_finished(stack_i) || !dasm_print_finished(&dasm, dasm_i)) {
+		// print stack line
+		if (stack_i < stack_ptr) {
+			printf(" [%02d]: 0x%08x  ", stack_i, stack[stack_i].i);
+			stack_i++;
+		} else {
+			printf("                   ");
+		}
+
+		// print disassembly line
+		if (!dasm_print_finished(&dasm, dasm_i)) {
+			if (dasm_addr(&dasm) >= instr_ptr)
+				dasm_i++;
+			dbg_print_instruction(&dasm);
+			// XXX: stop printing at ENDFUNC
+			if (dasm_instruction(&dasm)->opcode == ENDFUNC) {
+				dasm.addr = dasm.ain->code_size;
+			}
+			dasm_next(&dasm);
+		}
+
+		putchar('\n');
 	}
-}
-
-void dbg_print_vm_state(void)
-{
-	puts(" Disassembly");
-	puts(" -----------");
-	dbg_print_dasm();
-	puts("");
-	puts(" Stack");
-	puts(" -----");
-	dbg_print_stack();
 }
