@@ -570,11 +570,7 @@ static void system_call(enum syscall_code code)
 	}
 	case SYS_SLEEP: {// system.Sleep(int nSleep)
 		int ms = stack_pop().i;
-		struct timespec ts = {
-			.tv_sec = ms / 1000,
-			.tv_nsec = (ms % 1000) * 1000000L
-		};
-		nanosleep(&ts, NULL);
+		vm_sleep(ms);
 		break;
 	}
 	case SYS_RESUME_READ_COMMENT: {// system.ResumeReadComment(string szKeyName, string szFileName, ref array@string aszComment)
@@ -1499,11 +1495,11 @@ static enum opcode execute_instruction(enum opcode opcode)
 		break;
 	}
 	case S_MOD: {
-		stack_pop(); // ???
+		int type = stack_pop().i;
 		union vm_value val = stack_pop();
 		int fmt = stack_pop().i;
 		int dst = heap_alloc_slot(VM_STRING);
-		heap[dst].s = string_format(heap[fmt].s, val);
+		heap[dst].s = string_format(heap[fmt].s, val, type + 8);
 		heap_unref(fmt);
 		stack_push(dst);
 		break;
@@ -2372,6 +2368,11 @@ int vm_time(void)
 	struct timespec ts;
 	clock_gettime(CLOCK_MONOTONIC, &ts);
 	return (ts.tv_sec * 1000) + (ts.tv_nsec / 1000000);
+}
+
+void vm_sleep(int ms)
+{
+	SDL_Delay(ms);
 }
 
 _Noreturn void vm_exit(int code)

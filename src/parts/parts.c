@@ -873,6 +873,15 @@ bool PE_SetPartsCG_by_index(int parts_no, int cg_no, possibly_unused int sprite_
 	return parts_set_cg_by_index(parts_get(parts_no), cg_no, state);
 }
 
+// XXX: Rance Quest
+bool PE_SetPartsCG_by_string_index(int parts_no, struct string *cg_no,
+		possibly_unused int sprite_deform, int state)
+{
+	if (!parts_state_valid(--state))
+		return false;
+	return parts_set_cg_by_index(parts_get(parts_no), atoi(cg_no->text), state);
+}
+
 void PE_GetPartsCGName(int parts_no, struct string **cg_name, int state)
 {
 	if (!parts_state_valid(--state))
@@ -960,7 +969,7 @@ bool PE_SetLoopCG_by_index(int parts_no, int cg_no, int nr_frames, int frame_tim
 static struct cg *load_loop_cg_by_name(int no, void *data)
 {
 	int unused_no;
-	struct string *cg_name = string_format((struct string*)data, (union vm_value){.i=no});
+	struct string *cg_name = string_format((struct string*)data, (union vm_value){.i=no}, AIN_INT);
 	struct cg *cg = asset_cg_load_by_name(cg_name->text, &unused_no);
 	free_string(cg_name);
 	return cg;

@@ -106,12 +106,15 @@ union vm_value vm_copy(union vm_value v, enum ain_data_type type);
 int vm_execute_ain(struct ain *program);
 void vm_call(int fno, int struct_page);
 int vm_time(void);
+void vm_sleep(int ms);
 
 void hll_call(int libno, int fno);
 bool library_exists(int libno);
 bool library_function_exists(int libno, int fno);
 void init_libraries(void);
 void exit_libraries(void);
+
+struct string *string_format(struct string *fmt, union vm_value arg, enum ain_data_type type);
 
 void vm_stack_trace(void);
 _Noreturn void _vm_error(const char *fmt, ...);

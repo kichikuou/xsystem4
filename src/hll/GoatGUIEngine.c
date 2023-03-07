@@ -20,6 +20,7 @@
 
 #include "asset_manager.h"
 #include "parts.h"
+#include "xsystem4.h"
 #include "hll.h"
 
 static void GoatGUIEngine_PreLink(void);
@@ -30,6 +31,7 @@ HLL_LIBRARY(GoatGUIEngine,
 	    HLL_EXPORT(Update, PE_Update),
 	    HLL_EXPORT(SetPartsCG, PE_SetPartsCG),
 	    HLL_EXPORT(GetPartsCGNumber, PE_GetPartsCGNumber),
+	    HLL_EXPORT(GetPartsCGName, PE_GetPartsCGName),
 	    HLL_TODO_EXPORT(SetLoopCG, PE_SetLoopCG),
 	    HLL_EXPORT(SetText, PE_SetText),
 	    HLL_EXPORT(AddPartsText, PE_AddPartsText),
@@ -66,8 +68,8 @@ HLL_LIBRARY(GoatGUIEngine,
 	    HLL_EXPORT(SetShow, PE_SetShow),
 	    HLL_EXPORT(SetAlpha, PE_SetAlpha),
 	    HLL_TODO_EXPORT(SetPartsDrawFilter, PE_SetPartsDrawFilter),
-	    HLL_TODO_EXPORT(SetAddColor, PE_SetAddColor),
-	    HLL_TODO_EXPORT(SetMultiplyColor, PE_SetMultiplyColor),
+	    HLL_EXPORT(SetAddColor, PE_SetAddColor),
+	    HLL_EXPORT(SetMultiplyColor, PE_SetMultiplyColor),
 	    HLL_EXPORT(SetClickable, PE_SetClickable),
 	    HLL_EXPORT(GetPartsX, PE_GetPartsX),
 	    HLL_EXPORT(GetPartsY, PE_GetPartsY),
@@ -154,7 +156,10 @@ static void GoatGUIEngine_PreLink(void)
 	assert(libno >= 0);
 
 	fun = get_fun(libno, "SetPartsCG");
-	if (fun && fun->arguments[1].type.data == AIN_INT) {
+	if (fun && game_rance8) {
+		static_library_replace(&lib_GoatGUIEngine, "SetPartsCG", PE_SetPartsCG_by_string_index);
+	}
+	else if (fun && fun->arguments[1].type.data == AIN_INT) {
 		static_library_replace(&lib_GoatGUIEngine, "SetPartsCG", PE_SetPartsCG_by_index);
 	}
 
