@@ -151,6 +151,9 @@ static SDL_GameController *controllers[MAX_CONTROLLERS];
 static SDL_MouseButtonEvent deferred_synthetic_mouse_event;
 #define SYNTHETIC_MOUSE_EVENT_DELAY 20
 
+static uint32_t long_touch_start_timestamp;
+#define LONG_TOUCH_DURATION 1000
+
 static enum sact_keycode sdl_to_sact_button(int button)
 {
 	switch (button) {
@@ -503,6 +506,11 @@ void handle_events(void)
 		synthetic_mouse_event(&deferred_synthetic_mouse_event);
 		deferred_synthetic_mouse_event.timestamp = 0;
 	}
+	// Long touch emulates pressing the Ctrl key.
+	if (long_touch_start_timestamp && long_touch_start_timestamp + LONG_TOUCH_DURATION < SDL_GetTicks()) {
+		key_state[VK_LBUTTON] = false;
+		key_state[VK_CONTROL] = true;
+	}
 
 	SDL_Event e;
 	while (SDL_PollEvent(&e)) {
@@ -553,6 +561,18 @@ void handle_events(void)
 			break;
 		case SDL_MOUSEWHEEL:
 			wheel_dir = e.wheel.y;
+			break;
+		case SDL_FINGERDOWN:
+			long_touch_start_timestamp = e.tfinger.timestamp;
+			break;
+		case SDL_FINGERMOTION:
+			// Cancel the timer only if Ctrl emulation has not already started.
+			if (!key_state[VK_CONTROL])
+				long_touch_start_timestamp = 0;
+			break;
+		case SDL_FINGERUP:
+			long_touch_start_timestamp = 0;
+			key_state[VK_CONTROL] = false;
 			break;
 		case SDL_CONTROLLERDEVICEADDED:
 			if (e.cdevice.which < MAX_CONTROLLERS)
