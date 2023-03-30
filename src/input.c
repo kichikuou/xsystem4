@@ -152,6 +152,7 @@ static SDL_MouseButtonEvent deferred_synthetic_mouse_event;
 #define SYNTHETIC_MOUSE_EVENT_DELAY 20
 
 static uint32_t long_touch_start_timestamp;
+static SDL_FRect long_touch_finger_rect;
 #define LONG_TOUCH_DURATION 1000
 
 static enum sact_keycode sdl_to_sact_button(int button)
@@ -564,8 +565,18 @@ void handle_events(void)
 			break;
 		case SDL_FINGERDOWN:
 			long_touch_start_timestamp = e.tfinger.timestamp;
+			// Movement within this rect (1% of the screen size from the touch
+			// start position) will be ignored.
+			long_touch_finger_rect = (SDL_FRect) {
+				.x = e.tfinger.x - 0.01,
+				.y = e.tfinger.y - 0.01,
+				.w = 0.02,
+				.h = 0.02
+			};
 			break;
 		case SDL_FINGERMOTION:
+			if (SDL_PointInFRect(&(SDL_FPoint){ e.tfinger.x, e.tfinger.y }, &long_touch_finger_rect))
+				break;
 			// Cancel the timer only if Ctrl emulation has not already started.
 			if (!key_state[VK_CONTROL])
 				long_touch_start_timestamp = 0;
