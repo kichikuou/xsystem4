@@ -62,7 +62,7 @@ target_sources(xsystem4 PRIVATE
   src/heap.c
   src/id_pool.c
   src/input.c
-  src/movie.c
+  src/movie_plmpeg.c
   src/page.c
   src/resume.c
   src/savedata.c
@@ -97,6 +97,7 @@ target_sources(xsystem4 PRIVATE
   src/parts/parts.c
   src/parts/render.c
   src/parts/text.c
+  src/parts/save.c
 
   src/hll/ACXLoader.c
   src/hll/ADVSYS.c
@@ -150,6 +151,7 @@ target_sources(xsystem4 PRIVATE
   src/hll/MsgSkip.c
   src/hll/OutputLog.c
   src/hll/PassRegister.c
+  src/hll/PartsEngine.c
   src/hll/PlayDemo.c
   src/hll/PlayMovie.c
   src/hll/ReignEngine.c

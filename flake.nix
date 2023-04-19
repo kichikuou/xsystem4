@@ -32,9 +32,11 @@
             libwebp
             libsndfile
             glew
-            readline
+            readline81
+            chibi
             flex
             bison
+            ffmpeg
           ];
         }
       );
@@ -60,9 +62,11 @@
               libwebp
               libsndfile
               glew
-              readline
+              readline81
+              chibi
               flex
               bison
+              ffmpeg
             ];
           };
         }

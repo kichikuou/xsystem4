@@ -27,6 +27,7 @@ static void GoatGUIEngine_PreLink(void);
 
 HLL_LIBRARY(GoatGUIEngine,
 	    HLL_EXPORT(_PreLink, GoatGUIEngine_PreLink),
+	    HLL_EXPORT(_ModuleFini, PE_Reset),
 	    HLL_EXPORT(Init, PE_Init),
 	    HLL_EXPORT(Update, PE_Update),
 	    HLL_EXPORT(SetPartsCG, PE_SetPartsCG),
@@ -120,8 +121,8 @@ HLL_LIBRARY(GoatGUIEngine,
 	    HLL_EXPORT(SetPartsRotateZ, PE_SetPartsRotateZ),
 	    HLL_TODO_EXPORT(SetPartsAlphaClipperPartsNumber, PE_SetPartsAlphaClipperPartsNumber),
 	    HLL_TODO_EXPORT(SetPartsPixelDecide, PE_SetPartsPixelDecide),
-	    HLL_TODO_EXPORT(SetThumbnailReductionSize, PE_SetThumbnailReductionSize),
-	    HLL_TODO_EXPORT(SetThumbnailMode, PE_SetThumbnailMode),
+	    HLL_EXPORT(SetThumbnailReductionSize, PE_SetThumbnailReductionSize),
+	    HLL_EXPORT(SetThumbnailMode, PE_SetThumbnailMode),
 	    HLL_EXPORT(Save, PE_Save),
 	    HLL_EXPORT(Load, PE_Load),
 

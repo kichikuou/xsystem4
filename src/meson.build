@@ -20,7 +20,6 @@ xsystem4 = [version_h,
             'heap.c',
             'id_pool.c',
             'input.c',
-            'movie.c',
             'page.c',
             'resume.c',
             'savedata.c',
@@ -55,6 +54,7 @@ xsystem4 = [version_h,
             'parts/parts.c',
             'parts/render.c',
             'parts/text.c',
+            'parts/save.c',
 
             'hll/ACXLoader.c',
             'hll/ADVSYS.c',
@@ -108,6 +108,7 @@ xsystem4 = [version_h,
             'hll/MsgSkip.c',
             'hll/OutputLog.c',
             'hll/PassRegister.c',
+            'hll/PartsEngine.c',
             'hll/PlayDemo.c',
             'hll/PlayMovie.c',
             'hll/ReignEngine.c',
@@ -124,6 +125,13 @@ xsystem4 = [version_h,
 ]
 
 xsystem4_deps = [libm, zlib, sdl2, ft2, ffi, cglm, sndfile, libsys4_dep] + gl_deps
+
+if avcodec.found() and avformat.found() and avutil.found() and swscale.found()
+    xsystem4 += 'movie_ffmpeg.c'
+    xsystem4_deps += [avcodec, avformat, avutil, swscale]
+else
+    xsystem4 += 'movie_plmpeg.c'
+endif
 
 if get_option('debugger').allowed()
     add_project_arguments('-DDEBUGGER_ENABLED', language : 'c')

@@ -72,8 +72,18 @@ struct sound_motion {
 	bool played;
 };
 
+struct parts_text_char {
+	Texture t;
+	char ch[4];
+	int advance;
+	Point off;
+};
+
 struct parts_text_line {
+	struct parts_text_char *chars;
+	int nr_chars;
 	unsigned height;
+	unsigned width;
 };
 
 enum parts_type {
@@ -112,7 +122,8 @@ struct parts_text {
 
 struct parts_animation {
 	struct parts_common common;
-	unsigned cg_no;
+	struct string *cg_name;
+	unsigned start_no;
 	unsigned nr_frames;
 	Texture *frames;
 	unsigned frame_time;
@@ -134,6 +145,8 @@ struct parts_numeral {
 struct parts_gauge {
 	struct parts_common common;
 	Texture cg;
+	int cg_no;
+	float rate;
 };
 
 enum parts_cp_op_type {
@@ -267,15 +280,31 @@ void parts_set_scale_x(struct parts *parts, float mag);
 void parts_set_scale_y(struct parts *parts, float mag);
 void parts_set_rotation_z(struct parts *parts, float rot);
 void parts_set_alpha(struct parts *parts, int alpha);
-bool parts_set_cg_by_index(struct parts *parts, int cg_no, int state);
-bool parts_set_cg_by_name(struct parts *parts, struct string *cg_name, int state);
-void parts_set_hgauge_rate(struct parts *parts, float rate, int state);
-void parts_set_vgauge_rate(struct parts *parts, float rate, int state);
-bool parts_set_number(struct parts *parts, int n, int state);
 void parts_set_state(struct parts *parts, enum parts_state_type state);
 void parts_release(int parts_no);
 void parts_release_all(void);
 void parts_set_surface_area(struct parts *parts, struct parts_common *common, int x, int y, int w, int h);
+
+// for save.c
+void parts_list_resort(struct parts *parts);
+void parts_state_reset(struct parts_state *state, enum parts_type type);
+bool parts_cg_set(struct parts *parts, struct parts_cg *cg, struct string *cg_name);
+bool parts_cg_set_by_index(struct parts *parts, struct parts_cg *cg, int cg_no);
+void parts_text_append(struct parts *parts, struct parts_text *t, struct string *text);
+bool parts_animation_set_cg_by_index(struct parts *parts, struct parts_animation *anim,
+		int cg_no, int nr_frames, int frame_time);
+bool parts_animation_set_cg(struct parts *parts, struct parts_animation *anim,
+		struct string *cg_name, int start_no, int nr_frames, int frame_time);
+bool parts_numeral_set_number(struct parts *parts, struct parts_numeral *num, int n);
+bool parts_gauge_set_cg(struct parts *parts, struct parts_gauge *g, struct string *cg_name);
+bool parts_gauge_set_cg_by_index(struct parts *parts, struct parts_gauge *g, int cg_no);
+void parts_hgauge_set_rate(struct parts *parts, struct parts_gauge *g, float rate);
+void parts_vgauge_set_rate(struct parts *parts, struct parts_gauge *g, float rate);
+
+// text.c
+void parts_text_free(struct parts_text *t);
+struct string *parts_text_line_get(struct parts_text_line *line);
+struct string *parts_text_get(struct parts_text *t);
 
 // render.c
 void parts_render_init(void);
@@ -293,6 +322,9 @@ extern bool parts_began_click;
 
 // construction.c
 void parts_cp_op_free(struct parts_cp_op *op);
+void parts_add_cp_op(struct parts_construction_process *cproc, struct parts_cp_op *op);
+bool parts_build_construction_process(struct parts *parts,
+		struct parts_construction_process *cproc);
 
 // debug.c
 void parts_debug_init(void);
