@@ -63,6 +63,7 @@ target_sources(xsystem4 PRIVATE
   src/id_pool.c
   src/input.c
   src/movie_plmpeg.c
+  src/msgqueue.c
   src/page.c
   src/resume.c
   src/savedata.c

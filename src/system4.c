@@ -224,7 +224,7 @@ static char *get_xsystem4_home(void)
 	}
 
 	// If all else fails, use the current directory
-	return xstrdup(".");
+	return realpath_utf8(".");
 }
 
 static char *get_save_path(const char *dir_name)
@@ -376,6 +376,7 @@ enum {
 #ifdef DEBUGGER_ENABLED
 	LOPT_NODEBUG,
 	LOPT_DEBUG,
+	LOPT_DEBUG_API,
 #endif
 };
 
@@ -431,6 +432,7 @@ int main(int argc, char *argv[])
 #ifdef DEBUGGER_ENABLED
 			{ "nodebug",      no_argument,       0, LOPT_NODEBUG },
 			{ "debug",        no_argument,       0, LOPT_DEBUG },
+			{ "debug-api",    no_argument,       0, LOPT_DEBUG_API },
 #endif
 			{ 0 }
 		};
@@ -488,6 +490,10 @@ int main(int argc, char *argv[])
 		case LOPT_DEBUG:
 			dbg_start_in_debugger = true;
 			break;
+		case LOPT_DEBUG_API:
+			dbg_dap = true;
+			sys_silent = true;
+			break;
 #endif
 		}
 	}
@@ -496,7 +502,7 @@ int main(int argc, char *argv[])
 
 	if (argc < 1) {
 		if (!config_init_with_dir(".")) {
-			if (!config_init_with_dir("../"))
+			if (!config_init_with_dir(".."))
 				usage_error("Failed to find game in current or parent directory");
 		}
 	} else if (argc > 1) {
@@ -547,14 +553,7 @@ int main(int argc, char *argv[])
 	}
 
 	apply_game_specific_hacks(ain);
-
 	asset_manager_init();
-
-#ifdef DEBUGGER_ENABLED
 	dbg_init();
-	if (dbg_start_in_debugger)
-		dbg_repl();
-#endif
-
 	sys_exit(vm_execute_ain(ain));
 }

@@ -482,7 +482,7 @@ static void system_call(enum syscall_code code)
 	}
 	case SYS_OUTPUT: {// system.Output(string szText)
 		struct string *str = stack_peek_string(0);
-		sys_message("%s", display_sjis0(str->text));
+		log_message("stdout", "%s", display_sjis0(str->text));
 		// XXX: caller S_POPs
 		break;
 	}
@@ -2367,10 +2367,8 @@ void vm_stack_trace(void)
 {
 	for (int i = call_stack_ptr - 1; i >= 0; i--) {
 		struct ain_function *f = &ain->functions[call_stack[i].fno];
-		char *u = sjis2utf(f->name, strlen(f->name));
 		uint32_t addr = (i == call_stack_ptr - 1) ? instr_ptr : call_stack[i+1].call_address;
-		sys_warning("\t0x%08x in %s\n", addr, u);
-		free(u);
+		sys_warning("\t0x%08x in %s\n", addr, display_sjis0(f->name));
 	}
 }
 
@@ -2382,9 +2380,7 @@ _Noreturn void _vm_error(const char *fmt, ...)
 	va_end(ap);
 	sys_warning("at %s (0x%X) in:\n", current_instruction_name(), instr_ptr);
 	vm_stack_trace();
-#ifdef DEBUGGER_ENABLED
 	dbg_repl();
-#endif
 	sys_exit(1);
 }
 
