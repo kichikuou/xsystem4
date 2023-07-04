@@ -22,10 +22,14 @@
 #include "system4/cg.h"
 
 #include "asset_manager.h"
+#include "cJSON.h"
 #include "gfx/gfx.h"
+#include "json.h"
 #include "queue.h"
 #include "scene.h"
 #include "xsystem4.h"
+
+static int id_counter = 0;
 
 bool scene_is_dirty = true;
 
@@ -37,6 +41,9 @@ void scene_register_sprite(struct sprite *sp)
 {
 	if (sp->in_scene)
 		return;
+
+	if (!sp->id)
+		sp->id = ++id_counter;
 
 	struct sprite *p;
 	TAILQ_FOREACH(p, &sprite_list, entry) {
@@ -137,30 +144,35 @@ void scene_set_sprite_z2(struct sprite *sp, int z, int z2)
 	}
 }
 
-void scene_print_sprite(struct sprite *sp, int indent)
-{
-	sys_message("{\n");
-	indent++;
-	indent_message(indent, "z = (%d,%d),\n", sp->z, sp->z2);
-	indent_message(indent, "has_pixel = %s,\n", sp->has_pixel ? "true" : "false");
-	indent_message(indent, "has_alpha = %s,\n", sp->has_alpha ? "true" : "false");
-	indent_message(indent, "hidden = %s,\n", sp->hidden ? "true" : "false");
-	indent_message(indent, "in_scene = %s,\n", sp->in_scene ? "true" : "false");
-	indent--;
-	sys_message("}");
-
-}
-
 void scene_print(void)
 {
 	struct sprite *p;
 	TAILQ_FOREACH(p, &sprite_list, entry) {
-		if (p->debug_print) {
-			p->debug_print(p);
-		} else {
-			sys_message("unknown_scene_entity ");
-			scene_print_sprite(p, 0);
-			putchar('\n');
-		}
+		cJSON *json = p->to_json ? p->to_json(p, false) : scene_sprite_to_json(p, false);
+		char *text = cJSON_Print(json);
+		sys_message("%s\n", text);
+		free(text);
+		cJSON_Delete(json);
 	}
+}
+
+cJSON *scene_to_json(bool verbose)
+{
+	cJSON *ar = cJSON_CreateArray();
+	struct sprite *p;
+	TAILQ_FOREACH(p, &sprite_list, entry) {
+		cJSON *sprite = p->to_json ? p->to_json(p, verbose) : scene_sprite_to_json(p, verbose);
+		cJSON_AddItemToArray(ar, sprite);
+	}
+	return ar;
+}
+
+struct sprite *scene_get(int id)
+{
+	struct sprite *p;
+	TAILQ_FOREACH(p, &sprite_list, entry) {
+		if (p->id == id)
+			return p;
+	}
+	return NULL;
 }

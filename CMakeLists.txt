@@ -51,6 +51,7 @@ target_sources(xsystem4 PRIVATE
   src/audio_meta.c
   src/audio_mixer.c
   src/asset_manager.c
+  src/base64.c
   src/cJSON.c
   src/draw.c
   src/effect.c
@@ -62,6 +63,7 @@ target_sources(xsystem4 PRIVATE
   src/heap.c
   src/id_pool.c
   src/input.c
+  src/json.c
   src/movie_plmpeg.c
   src/msgqueue.c
   src/page.c
@@ -69,6 +71,7 @@ target_sources(xsystem4 PRIVATE
   src/savedata.c
   src/scene.c
   src/sprite.c
+  src/swf.c
   src/system4.c
   src/text.c
   src/util.c
@@ -93,6 +96,7 @@ target_sources(xsystem4 PRIVATE
 
   src/parts/construction.c
   src/parts/debug.c
+  src/parts/flash.c
   src/parts/input.c
   src/parts/motion.c
   src/parts/parts.c

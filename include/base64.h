@@ -1,4 +1,4 @@
-/* Copyright (C) 2022 kichikuou <KichikuouChrome@gmail.com>
+/* Copyright (C) 2023 Nunuhara Cabbage <nunuhara@haniwa.technology>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -14,18 +14,12 @@
  * along with this program; if not, see <http://gnu.org/licenses/>.
  */
 
-#ifndef SYSTEM4_PLUGIN_H
-#define SYSTEM4_PLUGIN_H
+#ifndef SYSTEM4_BASE64_H
+#define SYSTEM4_BASE64_H
 
-#include <stdbool.h>
+#include <stddef.h>
 
-typedef struct cJSON cJSON;
-struct sact_sprite;
+unsigned char *base64_encode(const unsigned char *src, size_t len,
+		size_t *out_len);
 
-struct draw_plugin {
-	const char *name;
-	void (*update)(struct sact_sprite *);
-	cJSON *(*to_json)(struct sact_sprite *, bool);
-};
-
-#endif /* SYSTEM4_PLUGIN_H */
+#endif /* SYSTEM4_BASE64_H */

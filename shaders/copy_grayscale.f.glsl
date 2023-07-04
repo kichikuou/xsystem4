@@ -1,4 +1,4 @@
-/* Copyright (C) 2022 kichikuou <KichikuouChrome@gmail.com>
+/* Copyright (C) 2023 kichikuou <KichikuouChrome@gmail.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -14,18 +14,12 @@
  * along with this program; if not, see <http://gnu.org/licenses/>.
  */
 
-#ifndef SYSTEM4_PLUGIN_H
-#define SYSTEM4_PLUGIN_H
+uniform sampler2D tex;
 
-#include <stdbool.h>
+in vec2 tex_coord;
+out vec4 frag_color;
 
-typedef struct cJSON cJSON;
-struct sact_sprite;
-
-struct draw_plugin {
-	const char *name;
-	void (*update)(struct sact_sprite *);
-	cJSON *(*to_json)(struct sact_sprite *, bool);
-};
-
-#endif /* SYSTEM4_PLUGIN_H */
+void main() {
+	float gray = dot(texture(tex, tex_coord).rgb, vec3(0.299, 0.587, 0.114));
+	frag_color = vec4(vec3(gray), 1);
+}

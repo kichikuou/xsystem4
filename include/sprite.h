@@ -54,6 +54,7 @@ struct sact_sprite {
 		Point pos;
 		int char_space;
 		int line_space;
+		int current_line_height;
 	} text;
 	// The sprite handle
 	int no;
@@ -132,7 +133,5 @@ int sprite_get_amap_value(struct sact_sprite *sp, int x, int y);
 void sprite_get_pixel_value(struct sact_sprite *sp, int x, int y, int *r, int *g, int *b);
 void sprite_bind_plugin(struct sact_sprite *sp, struct draw_plugin *plugin);
 void sprite_call_plugins(void);
-
-void sprite_print(struct sact_sprite *sp);
 
 #endif /* SYSTEM4_SPRITE_H */
