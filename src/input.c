@@ -149,11 +149,14 @@ static SDL_GameController *controllers[MAX_CONTROLLERS];
 // .timestamp != 0). We defer such events to prevent games from handling
 // button down events before querying the pointer position.
 static SDL_MouseButtonEvent deferred_synthetic_mouse_event;
-#define SYNTHETIC_MOUSE_EVENT_DELAY 20
+#define SYNTHETIC_MOUSE_EVENT_DELAY 50
 
 static uint32_t long_touch_start_timestamp;
 static SDL_FRect long_touch_finger_rect;
 #define LONG_TOUCH_DURATION 1000
+
+static float scroll_gesture_y;
+#define SCROLL_GESTURE_SENSITIVITY 0.02f  // 2% of screen height
 
 static enum sact_keycode sdl_to_sact_button(int button)
 {
@@ -564,6 +567,15 @@ void handle_events(void)
 			wheel_dir = e.wheel.y;
 			break;
 		case SDL_FINGERDOWN:
+			if (SDL_GetNumTouchFingers(e.tfinger.touchId) >= 2) {
+				// The user is about to start a multi-touch gesture.
+				key_state[VK_LBUTTON] = false;
+				key_state[VK_RBUTTON] = false;
+				deferred_synthetic_mouse_event.timestamp = 0;
+				long_touch_start_timestamp = 0;
+				scroll_gesture_y = -1.0f;
+				break;
+			}
 			long_touch_start_timestamp = e.tfinger.timestamp;
 			// Movement within this rect (1% of the screen size from the touch
 			// start position) will be ignored.
@@ -585,6 +597,16 @@ void handle_events(void)
 			long_touch_start_timestamp = 0;
 			key_state[VK_CONTROL] = false;
 			break;
+		case SDL_MULTIGESTURE:
+			if (e.mgesture.numFingers == 2) {
+				if (scroll_gesture_y < 0.0f)
+					scroll_gesture_y = e.mgesture.y;
+				float dy = scroll_gesture_y - e.mgesture.y;
+				if (dy * dy > SCROLL_GESTURE_SENSITIVITY * SCROLL_GESTURE_SENSITIVITY) {
+					wheel_dir = dy < 0 ? 1 : -1;  // Swipe up to scroll down.
+					scroll_gesture_y = e.mgesture.y;
+				}
+			}
 		case SDL_CONTROLLERDEVICEADDED:
 			if (e.cdevice.which < MAX_CONTROLLERS)
 				controllers[e.cdevice.which] = SDL_GameControllerOpen(e.cdevice.which);
