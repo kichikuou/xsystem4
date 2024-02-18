@@ -60,6 +60,7 @@ struct config config = {
 	.echo = false,
 	.text_x_scale = 1.0,
 	.manual_text_x_scale = false,
+	.rsm_save = false,
 
 	.bgi_path = NULL,
 	.wai_path = NULL,
@@ -175,6 +176,15 @@ static void read_user_config_file(const char *path)
 		} else if (!strcmp(ini[i].name->text, "save-folder")) {
 			free(config.save_dir);
 			config.save_dir = xstrdup(ini_string(&ini[i])->text);
+		} else if (!strcmp(ini[i].name->text, "save-format")) {
+			if (!strcmp(ini_string(&ini[i])->text, "json")) {
+				config.rsm_save = false;
+			} else if (!strcmp(ini_string(&ini[i])->text, "rsm")) {
+				config.rsm_save = true;
+			} else {
+				WARNING("Invalid value for save-format in config: \"%s\"",
+						ini_string(&ini[i])->text);
+			}
 		}
 		ini_free_entry(&ini[i]);
 	}
@@ -254,7 +264,6 @@ static void config_init(void)
 	char *new_save_dir = get_save_path(config.save_dir);
 	free(config.save_dir);
 	config.save_dir = new_save_dir;
-	mkdir_p(new_save_dir);
 }
 
 static bool config_init_with_ini(const char *ini_path)
@@ -345,6 +354,7 @@ static void usage(void)
 	puts("        --font-x-scale  Specify the x scale for text rendering (1.0 = default scale)");
 	puts("    -j, --joypad        Enable joypad");
 	puts("        --save-folder   Override save folder location");
+	puts("        --save-format   Specify the resume save file format. json (default) or rsm");
 #ifdef DEBUGGER_ENABLED
 	puts("        --nodebug       Disable debugger");
 	puts("        --debug         Start in debugger");
@@ -373,6 +383,7 @@ enum {
 	LOPT_FONT_X_SCALE,
 	LOPT_JOYPAD,
 	LOPT_SAVE_FOLDER,
+	LOPT_SAVE_FORMAT,
 #ifdef DEBUGGER_ENABLED
 	LOPT_NODEBUG,
 	LOPT_DEBUG,
@@ -429,6 +440,7 @@ int main(int argc, char *argv[])
 			{ "font-x-scale", required_argument, 0, LOPT_FONT_X_SCALE },
 			{ "joypad",       optional_argument, 0, LOPT_JOYPAD },
 			{ "save-folder",  required_argument, 0, LOPT_SAVE_FOLDER },
+			{ "save-format",  required_argument, 0, LOPT_SAVE_FORMAT },
 #ifdef DEBUGGER_ENABLED
 			{ "nodebug",      no_argument,       0, LOPT_NODEBUG },
 			{ "debug",        no_argument,       0, LOPT_DEBUG },
@@ -482,6 +494,15 @@ int main(int argc, char *argv[])
 			break;
 		case LOPT_SAVE_FOLDER:
 			savedir = optarg;
+			break;
+		case LOPT_SAVE_FORMAT:
+			if (!strcmp(optarg, "json")) {
+				config.rsm_save = false;
+			} else if (!strcmp(optarg, "rsm")) {
+				config.rsm_save = true;
+			} else {
+				WARNING("Invalid value for --save-format option: \"%s\"", optarg);
+			}
 			break;
 #ifdef DEBUGGER_ENABLED
 		case LOPT_NODEBUG:
@@ -537,7 +558,8 @@ int main(int argc, char *argv[])
 			config.joypad = false;
 		else
 			WARNING("Invalid value for 'joypad' option (must be 'on' or 'off')");
-	} if (savedir) {
+	}
+	if (savedir) {
 		free(config.save_dir);
 		config.save_dir = strdup(savedir);
 	}
@@ -552,6 +574,7 @@ int main(int argc, char *argv[])
 		return 0;
 	}
 
+	mkdir_p(config.save_dir);
 	apply_game_specific_hacks(ain);
 	asset_manager_init();
 	dbg_init();
