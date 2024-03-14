@@ -4,6 +4,23 @@ cmake_minimum_required(VERSION 3.14)
 project(xsystem4 LANGUAGES C)
 set(CMAKE_C_STANDARD 11)
 
+option(ENABLE_JSPI "Enable JSPI" OFF)
+
+function(add_emscripten_port name)
+  add_library(${name} INTERFACE)
+  set_target_properties(${name} PROPERTIES
+      INTERFACE_COMPILE_OPTIONS "--use-port=${name}"
+      INTERFACE_LINK_OPTIONS "--use-port=${name}")
+endfunction()
+add_emscripten_port(zlib)
+add_emscripten_port(libpng)
+add_emscripten_port(freetype)
+add_emscripten_port(sdl2)
+
+add_library(GLESv3 INTERFACE)
+set_target_properties(GLESv3 PROPERTIES
+    INTERFACE_LINK_OPTIONS -sMIN_WEBGL_VERSION=2)
+
 include(FetchContent)
 
 FetchContent_Declare(
@@ -11,17 +28,9 @@ FetchContent_Declare(
   URL https://github.com/recp/cglm/archive/refs/tags/v0.9.2.tar.gz
   URL_HASH SHA1=cb8472aa8c2ab67b66378dbaf10c2c7368d4e4c3
 )
-FetchContent_Declare(
-  SDL
-  URL https://github.com/libsdl-org/SDL/releases/download/release-2.30.1/SDL2-2.30.1.tar.gz
-  URL_HASH SHA1=9d502c495f3aa2d15446376e835a5e561ac32897
-)
-FetchContent_Declare(
-  freetype
-  GIT_REPOSITORY https://github.com/freetype/freetype.git
-  GIT_TAG VER-2-13-2
-)
-FetchContent_MakeAvailable(cglm SDL freetype)
+set(CGLM_STATIC ON CACHE BOOL "Static build" FORCE)
+set(CGLM_SHARED OFF CACHE BOOL "Shared build" FORCE)
+FetchContent_MakeAvailable(cglm)
 
 add_library(ffi STATIC IMPORTED)
 set_target_properties(ffi PROPERTIES
@@ -32,7 +41,7 @@ find_package(SndFile REQUIRED)
 
 add_subdirectory(subprojects/libsys4)
 
-add_library(xsystem4 SHARED)
+add_executable(xsystem4)
 
 target_compile_definitions(xsystem4 PRIVATE
   _DEFAULT_SOURCE
@@ -176,8 +185,40 @@ target_sources(xsystem4 PRIVATE
   )
 
 target_link_libraries(xsystem4 PRIVATE
-  m z SDL2 freetype ffi GLESv3 cglm SndFile::sndfile sys4)
+  m zlib sdl2 freetype ffi GLESv3 cglm SndFile::sndfile sys4 idbfs.js)
+
+target_link_options(xsystem4 PRIVATE
+  -sENVIRONMENT=web
+  -sMODULARIZE=1
+  -sEXPORT_ES6=1
+  -sALLOW_MEMORY_GROWTH=1
+  -sEXPORTED_RUNTIME_METHODS=FS,ENV
+  -sEXPORTED_FUNCTIONS=_main,_malloc,_vm_stack_trace
+  --embed-file=${CMAKE_CURRENT_LIST_DIR}/shaders@/shaders
+)
+
+if (ENABLE_JSPI)
+  target_link_options(xsystem4 PRIVATE
+    -sASYNCIFY=2
+    -sSUPPORT_LONGJMP=wasm
+  )
+else()
+  target_link_options(xsystem4 PRIVATE
+    -sASYNCIFY=1
+    -sASYNCIFY_STACK_SIZE=8192
+  )
+  # Without optimizations, Asyncify generates very large code.
+  list(APPEND CMAKE_EXE_LINKER_FLAGS_DEBUG "-O1")
+endif()
 
 target_compile_options(xsystem4 PRIVATE -Wno-unused-parameter)
 
-install(TARGETS xsystem4 SDL2 freetype)
+option(XSYSTEM4_INSTALL_DIR "Install directory for xsystem4" "")
+if (XSYSTEM4_INSTALL_DIR)
+  install(
+    FILES
+      ${CMAKE_CURRENT_BINARY_DIR}/xsystem4.js
+      ${CMAKE_CURRENT_BINARY_DIR}/xsystem4.wasm
+      ${CMAKE_CURRENT_BINARY_DIR}/xsystem4.aw.js
+    DESTINATION ${XSYSTEM4_INSTALL_DIR})
+endif()
