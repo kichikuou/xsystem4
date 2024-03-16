@@ -1,3 +1,5 @@
+# CMakeLists.txt for Android build
+
 cmake_minimum_required(VERSION 3.14)
 project(xsystem4 LANGUAGES C)
 set(CMAKE_C_STANDARD 11)
@@ -26,9 +28,6 @@ set_target_properties(ffi PROPERTIES
   IMPORTED_LOCATION ${CMAKE_STAGING_PREFIX}/lib/libffi.a
   INTERFACE_INCLUDE_DIRECTORIES ${CMAKE_STAGING_PREFIX}/include)
 
-# CMake < 2.23 does not look for packages in CMAKE_STAGING_PREFIX by default.
-# https://gitlab.kitware.com/cmake/cmake/-/issues/16870
-set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE BOTH)
 find_package(SndFile REQUIRED)
 
 add_subdirectory(subprojects/libsys4)
@@ -42,7 +41,11 @@ target_compile_definitions(xsystem4 PRIVATE
 
 target_include_directories(xsystem4 PRIVATE include)
 
-set(VCS_TAG "unknown version")  # FIXME
+execute_process(
+  COMMAND git rev-parse --short HEAD
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+  OUTPUT_VARIABLE VCS_TAG
+  OUTPUT_STRIP_TRAILING_WHITESPACE)
 configure_file(src/version.h.in version.h)
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 
