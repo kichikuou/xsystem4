@@ -6,18 +6,18 @@ include(FetchContent)
 
 FetchContent_Declare(
   cglm
-  URL https://github.com/recp/cglm/archive/refs/tags/v0.8.5.tar.gz
-  URL_HASH SHA1=d387b0fccf6a87b7139115c8ebfc87fa2433b3f0
+  URL https://github.com/recp/cglm/archive/refs/tags/v0.9.2.tar.gz
+  URL_HASH SHA1=cb8472aa8c2ab67b66378dbaf10c2c7368d4e4c3
 )
 FetchContent_Declare(
   SDL
-  URL https://github.com/libsdl-org/SDL/releases/download/release-2.28.5/SDL2-2.28.5.tar.gz
-  URL_HASH SHA1=50af6b564890d702e57e2a72d6429b43778ed29a
+  URL https://github.com/libsdl-org/SDL/releases/download/release-2.30.1/SDL2-2.30.1.tar.gz
+  URL_HASH SHA1=9d502c495f3aa2d15446376e835a5e561ac32897
 )
 FetchContent_Declare(
   freetype
   GIT_REPOSITORY https://github.com/freetype/freetype.git
-  GIT_TAG VER-2-12-1
+  GIT_TAG VER-2-13-2
 )
 FetchContent_MakeAvailable(cglm SDL freetype)
 
