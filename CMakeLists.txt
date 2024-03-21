@@ -32,11 +32,6 @@ set(CGLM_STATIC ON CACHE BOOL "Static build" FORCE)
 set(CGLM_SHARED OFF CACHE BOOL "Shared build" FORCE)
 FetchContent_MakeAvailable(cglm)
 
-add_library(ffi STATIC IMPORTED)
-set_target_properties(ffi PROPERTIES
-  IMPORTED_LOCATION ${CMAKE_STAGING_PREFIX}/lib/libffi.a
-  INTERFACE_INCLUDE_DIRECTORIES ${CMAKE_STAGING_PREFIX}/include)
-
 find_package(SndFile REQUIRED)
 
 add_subdirectory(subprojects/libsys4)
@@ -56,9 +51,16 @@ execute_process(
   OUTPUT_VARIABLE VCS_TAG
   OUTPUT_STRIP_TRAILING_WHITESPACE)
 configure_file(src/version.h.in version.h)
+
+add_custom_command(
+  OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/hll_signatures.h
+  COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/src/gen_hll_signatures.py ${CMAKE_CURRENT_BINARY_DIR}/hll_signatures.h
+  DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/gen_hll_signatures.py)
+
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 
 target_sources(xsystem4 PRIVATE
+  ${CMAKE_CURRENT_BINARY_DIR}/hll_signatures.h
   src/audio.c
   src/audio_meta.c
   src/audio_mixer.c
@@ -185,7 +187,7 @@ target_sources(xsystem4 PRIVATE
   )
 
 target_link_libraries(xsystem4 PRIVATE
-  m zlib sdl2 freetype ffi GLESv3 cglm SndFile::sndfile sys4 idbfs.js)
+  m zlib sdl2 freetype GLESv3 cglm SndFile::sndfile sys4 idbfs.js)
 
 target_link_options(xsystem4 PRIVATE
   -sENVIRONMENT=web

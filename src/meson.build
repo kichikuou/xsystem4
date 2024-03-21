@@ -131,6 +131,15 @@ xsystem4 = [version_h,
 
 xsystem4_deps = [libm, zlib, sdl2, ft2, ffi, cglm, sndfile, libsys4_dep] + gl_deps
 
+if not ffi.found()
+    prog_python = find_program('python3')
+    hll_signatures_h = custom_target('hll_signatures.h',
+                                     output : 'hll_signatures.h',
+                                     input : 'gen_hll_signatures.py',
+                                     command : [prog_python, '@INPUT@', '@OUTPUT@'])
+    xsystem4 += hll_signatures_h
+endif
+
 if avcodec.found() and avformat.found() and avutil.found() and swscale.found()
     xsystem4 += 'movie_ffmpeg.c'
     xsystem4_deps += [avcodec, avformat, avutil, swscale]
