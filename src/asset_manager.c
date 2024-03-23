@@ -23,7 +23,11 @@
 #include <assert.h>
 
 #include "system4.h"
+#ifdef __EMSCRIPTEN__
+#include "ald_emscripten.h"
+#else
 #include "system4/ald.h"
+#endif
 #include "system4/afa.h"
 #include "system4/cg.h"
 #include "system4/file.h"
@@ -271,7 +275,11 @@ static void ald_init(enum asset_type type, char **files, int count)
 		WARNING("Multiple asset archives for type %s", asset_strtype(type));
 
 	int error;
+#ifdef __EMSCRIPTEN__
+	struct archive *ar = ald_open_emscripten(type, &error);
+#else
 	struct archive *ar = ald_open(files, count, MMAP_IF_64BIT, &error);
+#endif
 	if (!ar)
 		ERROR("Failed to open ALD file: %s", archive_strerror(error));
 

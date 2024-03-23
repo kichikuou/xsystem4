@@ -61,6 +61,7 @@ include_directories(${CMAKE_CURRENT_BINARY_DIR})
 
 target_sources(xsystem4 PRIVATE
   ${CMAKE_CURRENT_BINARY_DIR}/hll_signatures.h
+  src/ald_emscripten.c
   src/audio.c
   src/audio_meta.c
   src/audio_mixer.c
