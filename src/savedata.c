@@ -33,6 +33,15 @@
 #include "vm/page.h"
 #include "xsystem4.h"
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+EM_JS(void, sync_savedir, (), {
+	Module.shell.schedule_syncfs();
+});
+#else
+void sync_savedir(void) {}
+#endif
+
 static int current_global;
 
 #define invalid_save_data(msg, data) {					\
@@ -65,6 +74,7 @@ int save_json(const char *filename, cJSON *json)
 		free(str);
 		return 0;
 	}
+	sync_savedir();
 	free(str);
 	return 1;
 
@@ -214,6 +224,7 @@ int save_globals(const char *keyname, const char *filename, const char *group_na
 	if (error != SAVEFILE_SUCCESS)
 		WARNING("Failed to write save file: %s", savefile_strerror(error));
 	fclose(fp);
+	sync_savedir();
 	gsave_free(save);
 	if (n_out)
 		*n_out = nr_vars;
@@ -574,5 +585,6 @@ int delete_save_file(const char *filename)
 		return 0;
 	}
 	free(path);
+	sync_savedir();
 	return 1;
 }

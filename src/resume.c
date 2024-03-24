@@ -382,10 +382,13 @@ static int save_json_image(const char *key, const char *path)
 
 int vm_save_image(const char *key, const char *path)
 {
+	int r;
 	if (config.rsm_save)
-		return save_rsave_image(key, path);
+		r = save_rsave_image(key, path);
 	else
-		return save_json_image(key, path);
+		r = save_json_image(key, path);
+	sync_savedir();
+	return r;
 }
 
 #define _invalid_save_data(file, func, line, fmt, ...)	\
@@ -985,8 +988,11 @@ static int write_json_image_comments(const char *key, const char *path, struct p
 
 int vm_write_image_comments(const char *key, const char *path, struct page *comments)
 {
+	int r;
 	if (config.rsm_save)
-		return write_rsave_image_comments(key, path, comments);
+		r = write_rsave_image_comments(key, path, comments);
 	else
-		return write_json_image_comments(key, path, comments);
+		r = write_json_image_comments(key, path, comments);
+	sync_savedir();
+	return r;
 }
