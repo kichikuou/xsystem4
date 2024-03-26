@@ -113,6 +113,9 @@ bool library_exists(int libno);
 bool library_function_exists(int libno, int fno);
 void init_libraries(void);
 void exit_libraries(void);
+#ifdef __EMSCRIPTEN__
+void validate_libraries(void);
+#endif
 
 // NOTE: This can probably be merged with ain_data_type, since the values are
 // disjoint.

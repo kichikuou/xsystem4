@@ -302,6 +302,10 @@ static void ain_audit(FILE *f, struct ain *ain)
 {
 	init_libraries();
 
+#ifdef __EMSCRIPTEN__
+	validate_libraries();
+#endif
+
 	for (size_t addr = 0; addr < ain->code_size;) {
 		uint16_t opcode = LittleEndian_getW(ain->code, addr);
 		const struct instruction *instr = &instructions[opcode];
