@@ -21,6 +21,9 @@
 #include <string.h>
 #include <errno.h>
 #include <limits.h>
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
 
 #include "system4.h"
 #include "system4/cg.h"
@@ -168,12 +171,18 @@ static int gl_initialize(void)
 
 static void set_window_title(void)
 {
+#ifdef __EMSCRIPTEN__
+	char *game_name = sjis2utf(config.game_name, 0);
+	EM_ASM({ return Module.shell.set_title(UTF8ToString($0)); }, game_name);
+	free(game_name);
+#else
 	char title[1024] = { [1023] = 0 };
 	char *game_name = sjis2utf(config.game_name, 0);
 	snprintf(title, 1023, "%s - XSystem4", game_name);
 	free(game_name);
 
 	SDL_SetWindowTitle(sdl.window, title);
+#endif
 }
 
 static bool gfx_initialized = false;
