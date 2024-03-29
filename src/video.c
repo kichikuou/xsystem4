@@ -192,7 +192,7 @@ int gfx_init(void)
 	if (gfx_initialized)
 		return true;
 
-	uint32_t flags = SDL_INIT_VIDEO | SDL_INIT_AUDIO;
+	uint32_t flags = SDL_INIT_VIDEO;
 	if (config.joypad)
 		flags |= SDL_INIT_GAMECONTROLLER;
 	if (SDL_Init(flags) < 0)

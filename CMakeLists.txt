@@ -191,10 +191,12 @@ target_link_libraries(xsystem4 PRIVATE
   m zlib sdl2 freetype GLESv3 cglm SndFile::sndfile sys4 idbfs.js)
 
 target_link_options(xsystem4 PRIVATE
-  -sENVIRONMENT=web
+  -sENVIRONMENT=web,worker
   -sMODULARIZE=1
   -sEXPORT_ES6=1
   -sALLOW_MEMORY_GROWTH=1
+  -sWASM_WORKERS=1
+  -sAUDIO_WORKLET=1
   -sEXPORTED_RUNTIME_METHODS=FS,ENV
   -sEXPORTED_FUNCTIONS=_main,_malloc,_vm_stack_trace
   --embed-file=${CMAKE_CURRENT_LIST_DIR}/shaders@/shaders
