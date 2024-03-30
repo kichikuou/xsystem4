@@ -25,6 +25,9 @@
 #include "scene.h"
 #include "vm.h"
 #include "debugger.h"
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
 
 #ifndef M_PI
 #define M_PI (3.14159265358979323846)
@@ -554,6 +557,17 @@ static void fire_deferred_events(void)
 
 void handle_events(void)
 {
+#ifdef __EMSCRIPTEN__
+	{
+		static int cnt;
+		if (++cnt == 10) {
+			// Yield to the browser to prevent the page from freezing.
+			emscripten_sleep(0);
+			cnt = 0;
+		}
+	}
+#endif
+
 	fire_deferred_events();
 
 	SDL_Event e;
