@@ -127,7 +127,8 @@ EM_BOOL audio_callback(int num_inputs, const AudioSampleFrame *inputs, int num_o
 {
 	assert(num_outputs == 1);
 	float buf[128 * 2];
-	emscripten_lock_waitinf_acquire(&mixer_lock);
+	// memory.atomic.wait cannot be used in audio worklets, so we have to use busyspin.
+	emscripten_lock_busyspin_waitinf_acquire(&mixer_lock);
 	memset(buf, 0, 128 * 2 * sizeof(float));
 	sts_mixer_mix_audio(&master->mixer, buf, 128);
 	emscripten_lock_release(&mixer_lock);
