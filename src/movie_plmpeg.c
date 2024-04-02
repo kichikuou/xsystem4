@@ -16,6 +16,7 @@
 
 #include <assert.h>
 #include <errno.h>
+#include <stdatomic.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
@@ -107,7 +108,7 @@ static Shader movie_shader;
 
 struct movie_context {
 	plm_t *plm;
-	lock_t *decoder_lock;
+	lock_t *lock;
 
 	plm_frame_t *pending_video_frame;
 	GLuint textures[3];  // Y, Cb, Cr
@@ -118,9 +119,7 @@ struct movie_context {
 
 	// Time keeping data. Written by audio handler and referenced by video
 	// handler (i.e. we sync the video to the audio).
-	double stream_time;  // in seconds
-	uint32_t wall_time_ms;
-	lock_t *timer_lock;
+	atomic_int_least32_t stream_time_origin;  // wall clock - stream time (msec)
 };
 
 static int audio_callback(sts_mixer_sample_t *sample, void *data)
@@ -128,9 +127,9 @@ static int audio_callback(sts_mixer_sample_t *sample, void *data)
 	struct movie_context *mc = data;
 	assert(sample == &mc->sts_stream.sample);
 
-	acquire_lock_audio_thread(mc->decoder_lock);
+	acquire_lock_audio_thread(mc->lock);
 	plm_samples_t *frame = plm_decode_audio(mc->plm);
-	release_lock(mc->decoder_lock);
+	release_lock(mc->lock);
 	if (!frame) {
 		sample->length = 0;
 		sample->data = NULL;
@@ -141,10 +140,7 @@ static int audio_callback(sts_mixer_sample_t *sample, void *data)
 	sample->data = frame->interleaved;
 
 	// Update the timestamp.
-	acquire_lock_audio_thread(mc->timer_lock);
-	mc->stream_time = frame->time;
-	mc->wall_time_ms = SDL_GetTicks();
-	release_lock(mc->timer_lock);
+	mc->stream_time_origin = SDL_GetTicks() - frame->time * 1000;
 	return STS_STREAM_CONTINUE;
 }
 
@@ -236,8 +232,7 @@ struct movie_context *movie_load(const char *filename)
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 	}
 
-	mc->decoder_lock = create_lock();
-	mc->timer_lock = create_lock();
+	mc->lock = create_lock();
 	mc->volume = 100;
 	return mc;
 }
@@ -251,16 +246,14 @@ void movie_free(struct movie_context *mc)
 		plm_destroy(mc->plm);
 	if (mc->textures[0])
 		glDeleteTextures(3, mc->textures);
-	destroy_lock(mc->decoder_lock);
-	destroy_lock(mc->timer_lock);
+	destroy_lock(mc->lock);
 	free(mc);
 }
 
 bool movie_play(struct movie_context *mc)
 {
 	// Start the audio stream.
-	mc->stream_time = 0.0;
-	mc->wall_time_ms = SDL_GetTicks();
+	mc->stream_time_origin = SDL_GetTicks();
 	mc->sts_stream.userdata = mc;
 	mc->sts_stream.callback = audio_callback;
 	mc->sts_stream.sample.frequency = plm_get_samplerate(mc->plm);
@@ -275,17 +268,15 @@ bool movie_draw(struct movie_context *mc, struct sact_sprite *sprite)
 	plm_frame_t *frame = mc->pending_video_frame;
 	mc->pending_video_frame = NULL;
 	if (!frame) {
-		acquire_lock_main_thread(mc->decoder_lock);
+		acquire_lock_main_thread(mc->lock);
 		frame = plm_decode_video(mc->plm);
-		release_lock(mc->decoder_lock);
+		release_lock(mc->lock);
 		if (!frame)
 			return plm_video_has_ended(mc->plm->video_decoder);
 	}
 
 	// If the frame's timestamp is in the future, save the frame and return.
-	acquire_lock_main_thread(mc->timer_lock);
-	double now = mc->stream_time + (SDL_GetTicks() - mc->wall_time_ms) / 1000.0;
-	release_lock(mc->timer_lock);
+	double now = (SDL_GetTicks() - mc->stream_time_origin) / 1000.0;
 	if (frame->time > now) {
 		mc->pending_video_frame = frame;
 		return true;
@@ -344,9 +335,7 @@ bool movie_is_end(struct movie_context *mc)
 
 int movie_get_position(struct movie_context *mc)
 {
-	acquire_lock_main_thread(mc->timer_lock);
-	int ms = mc->wall_time_ms ? mc->stream_time * 1000 + SDL_GetTicks() - mc->wall_time_ms : 0;
-	release_lock(mc->timer_lock);
+	int ms = mc->stream_time_origin ? SDL_GetTicks() - mc->stream_time_origin : 0;
 	return ms;
 }
 
