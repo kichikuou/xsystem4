@@ -163,6 +163,21 @@ void gfx_draw_init(void)
 
 static void run_draw_shader(Shader *s, Texture *dst, Texture *src, mat4 mw_transform, mat4 wv_transform, struct copy_data *data)
 {
+	if (src == dst) {
+		// If src and dst are the same, we need to create a copy of the texture
+		// to avoid feedback loop.
+		Texture tmp;
+		gfx_init_texture_blank(&tmp, src->w, src->h);
+		GLuint read_fbo = gfx_set_framebuffer(GL_READ_FRAMEBUFFER, src, 0, 0, src->w, src->h);
+		GLuint draw_fbo = gfx_set_framebuffer(GL_DRAW_FRAMEBUFFER, &tmp, 0, 0, src->w, src->h);
+		glBlitFramebuffer(0, 0, src->w, src->h,
+		                  0, 0, tmp.w, tmp.h, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+		gfx_reset_framebuffer(GL_READ_FRAMEBUFFER, read_fbo);
+		gfx_reset_framebuffer(GL_DRAW_FRAMEBUFFER, draw_fbo);
+		run_draw_shader(s, dst, &tmp, mw_transform, wv_transform, data);
+		gfx_delete_texture(&tmp);
+		return;
+	}
 	GLuint fbo = gfx_set_framebuffer(GL_DRAW_FRAMEBUFFER, dst, data->vpx, data->vpy, data->vpw, data->vph);
 
 	struct gfx_render_job job = {
