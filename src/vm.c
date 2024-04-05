@@ -23,6 +23,9 @@
 #include <setjmp.h>
 #include <assert.h>
 #include <SDL.h> // for system.MsgBox
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
 
 #include "system4.h"
 #include "system4/ain.h"
@@ -2373,12 +2376,16 @@ _Noreturn void _vm_error(const char *fmt, ...)
 {
 	va_list ap;
 	va_start(ap, fmt);
+#ifdef __EMSCRIPTEN__
+	sys_verror(fmt, ap);
+#else
 	sys_vwarning(fmt, ap);
 	va_end(ap);
 	sys_warning("at %s (0x%X) in:\n", current_instruction_name(), instr_ptr);
 	vm_stack_trace();
 	dbg_repl();
 	sys_exit(1);
+#endif
 }
 
 int vm_time(void)

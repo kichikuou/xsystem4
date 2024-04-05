@@ -24,6 +24,9 @@
 #include <time.h>
 #include <math.h>
 #include <limits.h>
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
 
 #include "system4.h"
 #include "system4/ain.h"
@@ -412,6 +415,12 @@ static void android_error_handler(const char *msg)
 }
 #endif
 
+#ifdef __EMSCRIPTEN__
+EM_JS(void, emscripten_error_handler, (const char *msg), {
+	Module.shell.on_error(UTF8ToString(msg));
+});
+#endif
+
 int main(int argc, char *argv[])
 {
 #ifdef _WIN32
@@ -419,6 +428,9 @@ int main(int argc, char *argv[])
 #endif
 #ifdef __ANDROID__
 	sys_error_handler = android_error_handler;
+#endif
+#ifdef __EMSCRIPTEN__
+	sys_error_handler = emscripten_error_handler;
 #endif
 
 	initialize_instructions();
