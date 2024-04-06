@@ -82,7 +82,9 @@ static const char *parts_text_append_char(struct parts_text *t, const char *str)
 	int len = extract_sjis_char(str, ch->ch);
 	int width = text_style_width(&t->ts, ch->ch);
 	int height = text_style_height(&t->ts);
-	gfx_init_texture_rgba(&ch->t, width, height, (SDL_Color){0,0,0,0});
+	SDL_Color c = text_style_has_edge(&t->ts) ? t->ts.edge_color : t->ts.color;
+	c.a = 0;
+	gfx_init_texture_rgba(&ch->t, width, height, c);
 	ch->advance = gfx_render_text(&ch->t, 0, 0, ch->ch, &t->ts);
 
 	line->width += width;

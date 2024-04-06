@@ -244,7 +244,7 @@ static void SengokuRanceFont_SP_TextClear(int sp_no)
 {
 	struct sact_sprite *sp = sact_try_get_sprite(sp_no);
 	if (!sp) return;
-	gfx_fill_with_alpha(sprite_get_texture(sp), 0, 0, sp->rect.w, sp->rect.h, 0, 0, 0, 0);
+	gfx_delete_texture(&sp->text.texture);
 	sprite_dirty(sp);
 }
 
@@ -333,7 +333,15 @@ static float sp_text_draw(struct sact_sprite *sp, struct sr_text_properties *tp,
 		tp->ts.size = 8;
 	}
 
-	struct texture *tex = sprite_get_texture(sp);
+	if (!sp->text.texture.handle) {
+		SDL_Color c;
+		if (text_style_has_edge(&tp->ts))
+			c = tp->ts.edge_color;
+		else
+			c = tp->ts.color;
+		c.a = 0;
+		gfx_init_texture_rgba(&sp->text.texture, sp->rect.w, sp->rect.h, c);
+	}
 
 	// save last char code
 	int last_char = -1;
@@ -343,7 +351,7 @@ static float sp_text_draw(struct sact_sprite *sp, struct sr_text_properties *tp,
 	tp->last_char = last_char;
 
 	sprite_dirty(sp);
-	return gfx_render_text(tex, x ,y, text->text, &tp->ts);
+	return gfx_render_text(&sp->text.texture, x, y, text->text, &tp->ts);
 }
 
 static void SengokuRanceFont_SP_TextDraw(int sp_no, struct string *text)
