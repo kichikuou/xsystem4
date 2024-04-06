@@ -1132,20 +1132,29 @@ void gfx_draw_line_to_amap(Texture *dst, int x0, int y0, int x1, int y1, int a)
 	restore_blend_mode();
 }
 
+void gfx_rance7_mg_prepare_draw_text(Texture *dst, int dx, int dy, int w, int h, int r, int g, int b)
+{
+	// Fill fully-transparent pixels on the destination texture with the text
+	// color before rendering to it. This eliminates halos around text caused
+	// by the invisible texture color (usually black) being blended with the
+	// text.
+	glBlendFuncSeparate(GL_ONE, GL_ZERO, GL_ZERO, GL_ONE);
+
+	struct copy_data data = COPY_DATA(dx, dy, dx, dy, w, h);
+	data.r = r / 255.0;
+	data.g = g / 255.0;
+	data.b = b / 255.0;
+	data.a = 0.0;
+	data.threshold = 0.001;
+	run_fill_shader(&fill_amap_under_border_shader.s, dst, &data);
+
+	restore_blend_mode();
+}
+
 // XXX: Not an actual DrawGraph function; used for rendering text
 void gfx_draw_glyph(Texture *dst, float dx, int dy, Texture *glyph, SDL_Color color, float scale_x, float bold_width)
 {
 	dx = roundf(dx);
-
-	glBlendFuncSeparate(GL_ONE, GL_ZERO, GL_ZERO, GL_ONE);
-	struct copy_data fill_data = COPY_DATA(dx, dy, dx, dy, glyph->w * scale_x, glyph->h);
-	fill_data.r = color.r / 255.0;
-	fill_data.g = color.g / 255.0;
-	fill_data.b = color.b / 255.0;
-	fill_data.a = 0.0;
-	fill_data.threshold = 0.001;
-	run_copy_shader(&fill_amap_under_border_shader.s, dst, dst, &fill_data);
-
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	glBlendEquationSeparate(GL_FUNC_ADD, GL_MAX);
 

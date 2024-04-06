@@ -173,5 +173,6 @@ void gfx_draw_line_to_amap(Texture *dst, int x0, int y0, int x1, int y1, int a);
 void gfx_draw_glyph(Texture *dst, float dx, int dy, Texture *glyph, SDL_Color color, float scale_x, float bold_width);
 void gfx_draw_glyph_to_pmap(Texture *dst, float dx, int dy, Texture *glyph, Rectangle glyph_pos, SDL_Color color, float scale_x);
 void gfx_draw_glyph_to_amap(Texture *dst, float dx, int dy, Texture *glyph, Rectangle glyph_pos, float scale_x);
+void gfx_rance7_mg_prepare_draw_text(Texture *dst, int dx, int dy, int w, int h, int r, int g, int b);
 
 #endif /* SYSTEM4_SDL_CORE_H */
