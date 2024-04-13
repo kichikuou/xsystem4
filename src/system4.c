@@ -264,6 +264,11 @@ static void config_init(void)
 	if (!config.game_name)
 		config.game_name = strdup(config.ain_filename);
 
+#ifdef __EMSCRIPTEN__
+	EM_ASM({ Module.shell.init_save(UTF8ToString($0), UTF8ToString($1)); },
+		display_sjis0(config.game_name), display_sjis1(config.save_dir));
+#endif
+
 	char *new_save_dir = get_save_path(config.save_dir);
 	free(config.save_dir);
 	config.save_dir = new_save_dir;
