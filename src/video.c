@@ -558,8 +558,10 @@ GLuint gfx_set_framebuffer(GLenum target, Texture *t, int x, int y, int w, int h
 	glFramebufferTexture2D(target, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, t->handle, 0);
 	glViewport(x, y, w, h);
 
+#ifndef __EMSCRIPTEN__  // Disable on wasm build for performance
 	if (glCheckFramebufferStatus(target) != GL_FRAMEBUFFER_COMPLETE)
 		ERROR("Incomplete framebuffer");
+#endif
 	return fbo;
 }
 
