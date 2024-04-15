@@ -501,7 +501,9 @@ static void system_call(enum syscall_code code)
 		int result = 0;
 		struct string *str = stack_peek_string(0);
 		char *utf = sjis2utf(str->text, str->size);
-
+#ifdef __EMSCRIPTEN__
+		result = EM_ASM_INT({ return window.confirm(UTF8ToString($0)); }, utf);
+#else
 		const SDL_MessageBoxData mbox = {
 			SDL_MESSAGEBOX_INFORMATION,
 			NULL,
@@ -514,6 +516,7 @@ static void system_call(enum syscall_code code)
 		if (SDL_ShowMessageBox(&mbox, &result)) {
 			WARNING("Error displaying message box");
 		}
+#endif
 		free(utf);
 		heap_unref(stack_pop().i);
 		stack_push(result);
