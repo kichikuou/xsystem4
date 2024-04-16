@@ -617,6 +617,11 @@ void handle_events(void)
 				key_event(&e.key, e.type == SDL_KEYDOWN);
 			}
 #else
+#ifdef __EMSCRIPTEN__
+			// Ignore key events during IME composition
+			if (EM_ASM_INT({ return Module.shell.input.isCompsiting(); }))
+				break;
+#endif
 			key_event(&e.key, e.type == SDL_KEYDOWN);
 #endif
 			break;
