@@ -625,3 +625,19 @@ int gfx_save_texture(Texture *t, const char *path, enum cg_type format)
 	free(pixels);
 	return r;
 }
+
+#ifdef __EMSCRIPTEN__
+
+EMSCRIPTEN_KEEPALIVE
+void *gfx_get_window_size(void)
+{
+	return &sdl.w;
+}
+
+EMSCRIPTEN_KEEPALIVE
+void *gfx_get_viewport(void)
+{
+	return &sdl.viewport;
+}
+
+#endif
