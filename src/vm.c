@@ -2403,6 +2403,10 @@ void vm_sleep(int ms)
 
 _Noreturn void vm_exit(int code)
 {
+#ifdef __EMSCRIPTEN__
+	// We cannot "close" a web app, so restart the game.
+	vm_reset();
+#endif
 	vm_free();
 #ifdef DEBUG_HEAP
 	for (size_t i = 0; i < heap_size; i++) {
