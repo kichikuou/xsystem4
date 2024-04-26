@@ -110,6 +110,7 @@ struct movie_context {
 	plm_t *plm;
 	lock_t *lock;
 
+	plm_samples_t * _Atomic pending_audio_frame;
 	plm_frame_t *pending_video_frame;
 	GLuint textures[3];  // Y, Cb, Cr
 
@@ -127,20 +128,30 @@ static int audio_callback(sts_mixer_sample_t *sample, void *data)
 	struct movie_context *mc = data;
 	assert(sample == &mc->sts_stream.sample);
 
-	acquire_lock_audio_thread(mc->lock);
-	plm_samples_t *frame = plm_decode_audio(mc->plm);
-	release_lock(mc->lock);
+	plm_samples_t *frame = mc->pending_audio_frame;
 	if (!frame) {
+		acquire_lock_audio_thread(mc->lock);
+		if (!mc->pending_audio_frame) {
+			mc->pending_audio_frame = plm_decode_audio(mc->plm);
+		}
+		frame = mc->pending_audio_frame;
+		release_lock(mc->lock);
+	}
+
+	if (!frame) {
+		free(sample->data);
 		sample->length = 0;
 		sample->data = NULL;
 		mc->voice = -1;
 		return STS_STREAM_COMPLETE;
 	}
 	sample->length = frame->count * 2;
-	sample->data = frame->interleaved;
+	memcpy(sample->data, frame->interleaved, sample->length * sizeof(float));
 
 	// Update the timestamp.
 	mc->stream_time_origin = SDL_GetTicks() - frame->time * 1000;
+
+	mc->pending_audio_frame = NULL;
 	return STS_STREAM_CONTINUE;
 }
 
@@ -239,8 +250,10 @@ struct movie_context *movie_load(const char *filename)
 
 void movie_free(struct movie_context *mc)
 {
-	if (mc->voice >= 0)
+	if (mc->voice >= 0) {
 		mixer_stream_stop(mc->voice);
+		free(mc->sts_stream.sample.data);
+	}
 
 	if (mc->plm)
 		plm_destroy(mc->plm);
@@ -248,6 +261,16 @@ void movie_free(struct movie_context *mc)
 		glDeleteTextures(3, mc->textures);
 	destroy_lock(mc->lock);
 	free(mc);
+}
+
+void prepare_audio_frame(struct movie_context *mc)
+{
+	if (mc->pending_audio_frame)
+		return;
+	acquire_lock_main_thread(mc->lock);
+	if (!mc->pending_audio_frame)
+		mc->pending_audio_frame = plm_decode_audio(mc->plm);
+	release_lock(mc->lock);
 }
 
 bool movie_play(struct movie_context *mc)
@@ -258,7 +281,9 @@ bool movie_play(struct movie_context *mc)
 	mc->sts_stream.callback = audio_callback;
 	mc->sts_stream.sample.frequency = plm_get_samplerate(mc->plm);
 	mc->sts_stream.sample.audio_format = STS_MIXER_SAMPLE_FORMAT_FLOAT;
+	mc->sts_stream.sample.data = xmalloc(PLM_AUDIO_SAMPLES_PER_FRAME * 2 * sizeof(float));
 	mc->voice = mixer_stream_play(&mc->sts_stream, mc->volume);
+	prepare_audio_frame(mc);
 	return true;
 }
 
@@ -279,6 +304,7 @@ bool movie_draw(struct movie_context *mc, struct sact_sprite *sprite)
 	double now = (SDL_GetTicks() - mc->stream_time_origin) / 1000.0;
 	if (frame->time > now) {
 		mc->pending_video_frame = frame;
+		prepare_audio_frame(mc);
 		return true;
 	}
 
@@ -325,6 +351,7 @@ bool movie_draw(struct movie_context *mc, struct sact_sprite *sprite)
 		gfx_swap();
 	}
 
+	prepare_audio_frame(mc);
 	return true;
 }
 
