@@ -17,12 +17,18 @@
 #include <ctype.h>
 #include <errno.h>
 #include <stdarg.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#include "system4/aar.h"
 #include "system4/string.h"
 #include "system4/utfsjis.h"
+
+#ifdef __EMSCRIPTEN__
+#include "archive_emscripten.h"
+#else
+#include "system4/aar.h"
+#endif
 
 #include "hll.h"
 #include "xsystem4.h"
@@ -203,7 +209,11 @@ static bool MonsterInfo_Load(struct string *filename)
 {
 	char *path = gamedir_path("Data/ReignData.red");
 	int error = ARCHIVE_SUCCESS;
+#ifdef __EMSCRIPTEN__
+	struct archive *aar = aar_open_emscripten(path, &error);
+#else
 	struct archive *aar = (struct archive *)aar_open(path, MMAP_IF_64BIT, &error);
+#endif
 	if (error == ARCHIVE_FILE_ERROR) {
 		WARNING("aar_open(\"%s\"): %s", display_utf0(path), strerror(errno));
 	} else if (error == ARCHIVE_BAD_ARCHIVE_ERROR) {

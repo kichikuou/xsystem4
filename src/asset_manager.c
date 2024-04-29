@@ -24,7 +24,7 @@
 
 #include "system4.h"
 #ifdef __EMSCRIPTEN__
-#include "ald_emscripten.h"
+#include "archive_emscripten.h"
 #else
 #include "system4/ald.h"
 #endif

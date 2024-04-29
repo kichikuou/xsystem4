@@ -24,8 +24,12 @@
 #include "system4/alk.h"
 #include "system4/archive.h"
 #include "system4/cg.h"
-#include "system4/dlf.h"
 #include "system4/file.h"
+#ifdef __EMSCRIPTEN__
+#include "archive_emscripten.h"
+#else
+#include "system4/dlf.h"
+#endif
 
 #include "dungeon/dgn.h"
 #include "dungeon/dtx.h"
@@ -149,7 +153,11 @@ bool dungeon_load(struct dungeon_context *ctx, int num)
 	if (ctx->version == DRAW_DUNGEON_1) {
 		char *path = gamedir_path("Data/DungeonData.dlf");
 		int error = ARCHIVE_SUCCESS;
+#ifdef __EMSCRIPTEN__
+		struct archive *dlf = dlf_open_emscripten(path, &error);
+#else
 		struct archive *dlf = (struct archive *)dlf_open(path, MMAP_IF_64BIT, &error);
+#endif
 		if (error == ARCHIVE_FILE_ERROR) {
 			WARNING("dlf_open(\"%s\"): %s", display_utf0(path), strerror(errno));
 		} else if (error == ARCHIVE_BAD_ARCHIVE_ERROR) {

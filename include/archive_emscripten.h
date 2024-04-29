@@ -14,8 +14,8 @@
  * along with this program; if not, see <http://gnu.org/licenses/>.
  */
 
-#ifndef SYSTEM4_ALD_EMSCRIPTEN_H
-#define SYSTEM4_ALD_EMSCRIPTEN_H
+#ifndef SYSTEM4_ARCHIVE_EMSCRIPTEN_H
+#define SYSTEM4_ARCHIVE_EMSCRIPTEN_H
 
 #include "system4/archive.h"
 
@@ -24,5 +24,7 @@
 enum asset_type;
 
 struct archive *ald_open_emscripten(enum asset_type type, int *error);
+struct archive *dlf_open_emscripten(const char *path, int *error);
+struct archive *aar_open_emscripten(const char *path, int *error);
 
-#endif /* SYSTEM4_ALD_EMSCRIPTEN_H */
+#endif /* SYSTEM4_ARCHIVE_EMSCRIPTEN_H */

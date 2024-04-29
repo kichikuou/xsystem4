@@ -22,10 +22,15 @@
 #include <cglm/cglm.h>
 
 #include "system4.h"
-#include "system4/aar.h"
 #include "system4/cg.h"
 #include "system4/hashtable.h"
 #include "system4/string.h"
+
+#ifdef __EMSCRIPTEN__
+#include "archive_emscripten.h"
+#else
+#include "system4/aar.h"
+#endif
 
 #include "3d_internal.h"
 #include "asset_manager.h"
@@ -203,7 +208,11 @@ struct RE_plugin *RE_plugin_new(enum RE_plugin_version version)
 {
 	char *aar_path = gamedir_path("Data/ReignData.red");
 	int error = ARCHIVE_SUCCESS;
+#ifdef __EMSCRIPTEN__
+	struct archive *aar = aar_open_emscripten(aar_path, &error);
+#else
 	struct archive *aar = (struct archive *)aar_open(aar_path, MMAP_IF_64BIT, &error);
+#endif
 	if (error == ARCHIVE_FILE_ERROR) {
 		WARNING("aar_open(\"%s\"): %s", display_utf0(aar_path), strerror(errno));
 	} else if (error == ARCHIVE_BAD_ARCHIVE_ERROR) {
