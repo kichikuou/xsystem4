@@ -243,6 +243,15 @@ static void key_event(SDL_KeyboardEvent *e, bool pressed)
 
 static void mouse_event(SDL_MouseButtonEvent *e)
 {
+#ifdef __EMSCRIPTEN__
+	if (e->button == SDL_BUTTON_RIGHT && e->state == SDL_PRESSED) {
+		// Right-click outside the viewport opens the system menu.
+		SDL_Point p = { .x = e->x, .y = e->y };
+		if (!SDL_PointInRect(&p, &sdl.viewport)) {
+			EM_ASM({ Module.shell.open_system_menu(); });
+		}
+	}
+#endif
 	enum sact_keycode code = sdl_to_sact_button(e->button);
 	if (code)
 		key_state[code] = e->state == SDL_PRESSED;
@@ -528,10 +537,20 @@ static void fire_deferred_events(void)
 		synthetic_mouse_event(&deferred_synthetic_mouse_event);
 		deferred_synthetic_mouse_event.timestamp = 0;
 	}
-	// Long touch emulates pressing the Ctrl key.
 	if (long_touch_start_timestamp && long_touch_start_timestamp + LONG_TOUCH_DURATION < now) {
-		key_state[VK_LBUTTON] = false;
-		key_state[VK_CONTROL] = true;
+		SDL_Point p;
+		SDL_GetMouseState(&p.x, &p.y);
+		if (SDL_PointInRect(&p, &sdl.viewport)) {
+			// Long touch in the viewport emulates pressing the Ctrl key.
+			key_state[VK_LBUTTON] = false;
+			key_state[VK_CONTROL] = true;
+		} else {
+#ifdef __EMSCRIPTEN__
+			// Long touch outside the viewport opens the system menu.
+			EM_ASM({ Module.shell.open_system_menu(); });
+#endif
+			long_touch_start_timestamp = 0;
+		}
 	}
 
 #ifdef __ANDROID__
