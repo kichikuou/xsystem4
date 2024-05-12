@@ -2417,3 +2417,10 @@ _Noreturn void vm_exit(int code)
 #endif
 	sys_exit(code);
 }
+
+EMSCRIPTEN_KEEPALIVE
+void xsystem4_reset(void)
+{
+	SDL_Event event = { .type = SDL_QUIT };
+	SDL_PushEvent(&event);
+}
