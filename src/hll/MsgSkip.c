@@ -18,6 +18,11 @@
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#else
+#define EMSCRIPTEN_KEEPALIVE
+#endif
 
 #include "system4.h"
 #include "system4/ain.h"
@@ -121,12 +126,14 @@ static int MsgSkip_GetEnable(void)
 	return enabled;
 }
 
-static void MsgSkip_SetState(int _state)
+EMSCRIPTEN_KEEPALIVE
+void MsgSkip_SetState(int _state)
 {
 	state = _state;
 }
 
-static int MsgSkip_GetState(void)
+EMSCRIPTEN_KEEPALIVE
+int MsgSkip_GetState(void)
 {
 	return state;
 }
