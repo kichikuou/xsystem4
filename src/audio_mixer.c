@@ -178,7 +178,14 @@ static void aw_initialized(EMSCRIPTEN_WEBAUDIO_T audio_context, EM_BOOL success,
 		audio_context, &opts, aw_processor_created, 0);
 }
 
-static void audio_device_init(void)
+static void audio_device_init(int *sample_rate)
+{
+	*sample_rate = EM_ASM_INT({
+		return Module.shell.get_audio_dest_node().context.sampleRate;
+	});
+}
+
+static void audio_device_start(void)
 {
 	static uint8_t aw_stack[32 * 1024];
 	EMSCRIPTEN_WEBAUDIO_T context = EM_ASM_INT({
@@ -208,19 +215,29 @@ static void audio_callback(possibly_unused void *data, Uint8 *stream, int len)
 	}
 }
 
-static void audio_device_init(void)
+static void audio_device_init(int *sample_rate)
 {
 	if (SDL_Init(SDL_INIT_AUDIO) < 0)
 		ERROR("SDL_Init failed: %s", SDL_GetError());
-	SDL_AudioSpec have;
+
+
+	SDL_AudioSpec spec;
 	SDL_AudioSpec want = {
 		.format = AUDIO_F32,
-		.freq = 44100,
+		.freq = *sample_rate,
 		.channels = 2,
 		.samples = CHUNK_SIZE,
 		.callback = audio_callback,
 	};
-	audio_device = SDL_OpenAudioDevice(NULL, 0, &want, &have, 0);
+
+	if (SDL_GetAudioDeviceSpec(0, 0, &spec) == 0)
+		*sample_rate = want.freq = spec.freq;
+
+	audio_device = SDL_OpenAudioDevice(NULL, 0, &want, &spec, 0);
+}
+
+static void audio_device_start(void)
+{
 	SDL_PauseAudioDevice(audio_device, 0);
 }
 
@@ -743,9 +760,12 @@ void mixer_init(void)
 		}
 	}
 
+	int sample_rate = 44100;
+	audio_device_init(&sample_rate);
+
 	// initialize mixers
 	for (int i = 0; i < nr_mixers; i++) {
-		sts_mixer_init(&mixers[i].mixer, 44100, STS_MIXER_SAMPLE_FORMAT_FLOAT);
+		sts_mixer_init(&mixers[i].mixer, sample_rate, STS_MIXER_SAMPLE_FORMAT_FLOAT);
 		int volume = i < (int)config.mixer_nr_channels ? config.mixer_volumes[i] : config.default_volume;
 		mixers[i].mixer.gain = clamp(0.0f, 1.0f, (float)volume / 100.0f);
 	}
@@ -756,7 +776,7 @@ void mixer_init(void)
 			continue;
 		mixers[i].stream.userdata = &mixers[i];
 		mixers[i].stream.callback = refill_mixer;
-		mixers[i].stream.sample.frequency = 44100;
+		mixers[i].stream.sample.frequency = sample_rate;
 		mixers[i].stream.sample.audio_format = STS_MIXER_SAMPLE_FORMAT_FLOAT;
 		mixers[i].stream.sample.length = CHUNK_SIZE * 2;
 		mixers[i].stream.sample.data = mixers[i].data;
@@ -769,7 +789,7 @@ void mixer_init(void)
 	if (config.wai_path)
 		wai_load(config.wai_path);
 
-	audio_device_init();
+	audio_device_start();
 }
 
 int mixer_get_numof(void)
