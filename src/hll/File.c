@@ -25,10 +25,10 @@
 #include "system4.h"
 #include "system4/buffer.h"
 #include "system4/file.h"
+#include "system4/little_endian.h"
 #include "system4/string.h"
 
 #include "hll.h"
-#include "little_endian.h"
 #include "savedata.h"
 #include "vm/heap.h"
 #include "vm/page.h"
@@ -335,7 +335,7 @@ static int File_GetTime(struct string *filename, struct page **page)
 static int File_Delete(struct string *name)
 {
 	char *path = unix_path(name->text);
-	if (remove(path)) {
+	if (remove_utf8(path)) {
 		WARNING("remove: %s", strerror(errno));
 		return 0;
 	}

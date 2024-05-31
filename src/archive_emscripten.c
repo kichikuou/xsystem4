@@ -20,7 +20,7 @@
 #include <emscripten.h>
 
 #include "system4.h"
-#include "little_endian.h"
+#include "system4/little_endian.h"
 
 #include "archive_emscripten.h"
 #include "asset_manager.h"
