@@ -27,6 +27,4 @@ int save_globals(const char *keyname, const char *filename, const char *group_na
 int load_globals(const char *keyname, const char *filename, const char *group_name, int *n);
 int delete_save_file(const char *filename);
 
-void sync_savedir(void);
-
 #endif /* SYSTEM4_SAVEDATA_H */
