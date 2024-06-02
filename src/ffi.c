@@ -292,6 +292,11 @@ void hll_call(int libno, int fno)
 		case AIN_REF_FUNC_TYPE:
 		case AIN_REF_ARRAY_TYPE:
 			break;
+		case AIN_ARRAY_TYPE:
+			// Sys41VM doesn't make a copy when passing an array by value.
+			if (ain->version <= 1)
+				break;
+			// fallthrough
 		default:
 			variable_fini(stack[stack_ptr+j], f->arguments[i].type.data);
 			break;
@@ -351,6 +356,8 @@ extern struct static_library lib_KiwiSoundEngine;
 extern struct static_library lib_LoadCG;
 extern struct static_library lib_MainEXFile;
 extern struct static_library lib_MainSurface;
+extern struct static_library lib_MamanyoDemo;
+extern struct static_library lib_MamanyoSDemo;
 extern struct static_library lib_MarmotModelEngine;
 extern struct static_library lib_Math;
 extern struct static_library lib_MapLoader;
@@ -377,6 +384,29 @@ extern struct static_library lib_SystemServiceEx;
 extern struct static_library lib_TapirEngine;
 extern struct static_library lib_Timer;
 extern struct static_library lib_Toushin3Loader;
+extern struct static_library lib_vmAnime;
+extern struct static_library lib_vmArray;
+extern struct static_library lib_vmCG;
+extern struct static_library lib_vmChrLoader;
+extern struct static_library lib_vmCursor;
+extern struct static_library lib_vmDialog;
+extern struct static_library lib_vmDrawGauge;
+extern struct static_library lib_vmDrawMsg;
+extern struct static_library lib_vmDrawNumber;
+extern struct static_library lib_vmFile;
+extern struct static_library lib_vmGraph;
+extern struct static_library lib_vmGraphQuake;
+extern struct static_library lib_vmKey;
+extern struct static_library lib_vmMapLoader;
+extern struct static_library lib_vmMsgLog;
+extern struct static_library lib_vmMsgSkip;
+extern struct static_library lib_vmMusic;
+extern struct static_library lib_vmSound;
+extern struct static_library lib_vmSprite;
+extern struct static_library lib_vmString;
+extern struct static_library lib_vmSurface;
+extern struct static_library lib_vmSystem;
+extern struct static_library lib_vmTimer;
 extern struct static_library lib_VSFile;
 
 static struct static_library *static_libraries[] = {
@@ -422,6 +452,8 @@ static struct static_library *static_libraries[] = {
 	&lib_LoadCG,
 	&lib_MainEXFile,
 	&lib_MainSurface,
+	&lib_MamanyoDemo,
+	&lib_MamanyoSDemo,
 	&lib_MarmotModelEngine,
 	&lib_Math,
 	&lib_MapLoader,
@@ -448,6 +480,29 @@ static struct static_library *static_libraries[] = {
 	&lib_TapirEngine,
 	&lib_Timer,
 	&lib_Toushin3Loader,
+	&lib_vmAnime,
+	&lib_vmArray,
+	&lib_vmCG,
+	&lib_vmChrLoader,
+	&lib_vmCursor,
+	&lib_vmDialog,
+	&lib_vmDrawGauge,
+	&lib_vmDrawMsg,
+	&lib_vmDrawNumber,
+	&lib_vmFile,
+	&lib_vmGraph,
+	&lib_vmGraphQuake,
+	&lib_vmKey,
+	&lib_vmMapLoader,
+	&lib_vmMsgLog,
+	&lib_vmMsgSkip,
+	&lib_vmMusic,
+	&lib_vmSound,
+	&lib_vmSprite,
+	&lib_vmString,
+	&lib_vmSurface,
+	&lib_vmSystem,
+	&lib_vmTimer,
 	&lib_VSFile,
 	NULL
 };
