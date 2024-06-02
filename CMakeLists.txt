@@ -201,6 +201,7 @@ target_link_options(xsystem4 PRIVATE
   -sEXPORTED_RUNTIME_METHODS=FS,ENV
   -sEXPORTED_FUNCTIONS=_main,_malloc,_vm_stack_trace
   --embed-file=${CMAKE_CURRENT_LIST_DIR}/shaders@/shaders
+  --emit-tsd=xsystem4.d.ts
 )
 
 if (ENABLE_JSPI)
@@ -227,4 +228,12 @@ if (XSYSTEM4_INSTALL_DIR)
       ${CMAKE_CURRENT_BINARY_DIR}/xsystem4.wasm
       ${CMAKE_CURRENT_BINARY_DIR}/xsystem4.aw.js
     DESTINATION ${XSYSTEM4_INSTALL_DIR})
+endif()
+
+option(XSYSTEM4_TS_INSTALL_DIR "Install directory for xsystem4.d.ts" "")
+if (XSYSTEM4_TS_INSTALL_DIR)
+  install(
+    FILES
+      ${CMAKE_CURRENT_BINARY_DIR}/xsystem4.d.ts
+    DESTINATION ${XSYSTEM4_TS_INSTALL_DIR})
 endif()
