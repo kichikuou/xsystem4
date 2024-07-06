@@ -26,13 +26,13 @@
 #include "vm/page.h"
 #include "xsystem4.h"
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
 #ifdef HAVE_LIBFFI
 #include <ffi.h>
 #else
 #include "hll_signatures.h"
-#endif
-#ifdef __EMSCRIPTEN__
-#include <emscripten.h>
 #endif
 
 #define HLL_MAX_ARGS 64

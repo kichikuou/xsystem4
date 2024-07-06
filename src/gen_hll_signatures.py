@@ -189,7 +189,8 @@ write('''\
 	{ NULL, HLL_SIG_UNSUPPORTED },
 };
 
-static void ffi_call(const enum hll_signature *cif, void *fun, union vm_value *r, void **args)
+EMSCRIPTEN_KEEPALIVE  // prevents inlining
+void ffi_call(const enum hll_signature *cif, void *fun, union vm_value *r, void **args)
 {
 	switch (*cif) {
 ''')
