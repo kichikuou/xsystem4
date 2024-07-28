@@ -115,6 +115,7 @@ signatures = [
     'vipi',
     'vipp',
     'vippp',
+    'vipppp',
     'vp',
     'vpi',
     'vpii',
