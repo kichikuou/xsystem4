@@ -333,6 +333,8 @@ extern struct static_library lib_Confirm2;
 extern struct static_library lib_Confirm3;
 extern struct static_library lib_CrayfishLogViewer;
 extern struct static_library lib_Cursor;
+extern struct static_library lib_DALKDemo;
+extern struct static_library lib_DALKEDemo;
 extern struct static_library lib_Data;
 extern struct static_library lib_DataFile;
 extern struct static_library lib_DrawDungeon;
@@ -389,6 +391,8 @@ extern struct static_library lib_vmArray;
 extern struct static_library lib_vmCG;
 extern struct static_library lib_vmChrLoader;
 extern struct static_library lib_vmCursor;
+extern struct static_library lib_vmDalkGaiden;
+extern struct static_library lib_vmData;
 extern struct static_library lib_vmDialog;
 extern struct static_library lib_vmDrawGauge;
 extern struct static_library lib_vmDrawMsg;
@@ -429,6 +433,8 @@ static struct static_library *static_libraries[] = {
 	&lib_Confirm3,
 	&lib_CrayfishLogViewer,
 	&lib_Cursor,
+	&lib_DALKDemo,
+	&lib_DALKEDemo,
 	&lib_Data,
 	&lib_DataFile,
 	&lib_DrawDungeon,
@@ -485,6 +491,8 @@ static struct static_library *static_libraries[] = {
 	&lib_vmCG,
 	&lib_vmChrLoader,
 	&lib_vmCursor,
+	&lib_vmDalkGaiden,
+	&lib_vmData,
 	&lib_vmDialog,
 	&lib_vmDrawGauge,
 	&lib_vmDrawMsg,

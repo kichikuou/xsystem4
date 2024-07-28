@@ -79,6 +79,7 @@ GLuint gfx_load_shader_file(const char *path, GLenum type);
 
 // rendering
 void gfx_set_clear_color(int r, int g, int b, int a);
+void gfx_set_view_offset(int x, int y);
 void gfx_clear(void);
 void gfx_swap(void);
 void gfx_prepare_job(struct gfx_render_job *job);
@@ -152,7 +153,7 @@ void gfx_copy_stretch_blend_amap_alpha(struct texture *dst, int dx, int dy, int 
 void gfx_copy_rot_zoom(Texture *dst, Texture *src, int sx, int sy, int w, int h, float rotate, float mag);
 void gfx_copy_rot_zoom_amap(Texture *dst, Texture *src, int sx, int sy, int w, int h, float rotate, float mag);
 void gfx_copy_rot_zoom_use_amap(Texture *dst, Texture *src, int sx, int sy, int w, int h, float rotate, float mag);
-void gfx_copy_root_zoom2(Texture *dst, float cx, float cy, Texture *src, float scx, float scy, float rot, float mag);
+void gfx_copy_rot_zoom2(Texture *dst, float cx, float cy, Texture *src, float scx, float scy, float rot, float mag);
 void gfx_copy_reverse_LR(Texture *dst, int dx, int dy, Texture *src, int sx, int sy, int w, int h);
 void gfx_copy_reverse_UD(Texture *dst, int dx, int dy, Texture *src, int sx, int sy, int w, int h);
 void gfx_copy_reverse_amap_LR(Texture *dst, int dx, int dy, Texture *src, int sx, int sy, int w, int h);

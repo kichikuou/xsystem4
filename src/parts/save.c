@@ -22,6 +22,8 @@
 #include "parts_internal.h"
 #include "../hll/iarray.h"
 
+#define CURRENT_SAVE_VERSION 2
+
 static void save_parts_params(struct iarray_writer *w, struct parts_params *params)
 {
 	iarray_write(w, params->z);
@@ -91,7 +93,8 @@ static void load_parts_text(struct iarray_reader *r, struct parts *parts,
 
 	text->nr_lines = 0;
 	text->lines = NULL;
-	text->cursor = (SDL_Point){0,0};
+	text->cursor.x = 0;
+	text->cursor.y = 0;
 
 	int nr_lines = iarray_read(r);
 	for (unsigned i = 0; i < nr_lines; i++) {
@@ -136,7 +139,7 @@ static void save_parts_numeral(struct iarray_writer *w, struct parts_numeral *nu
 	iarray_write(w, num->space);
 	iarray_write(w, num->show_comma);
 	iarray_write(w, num->length);
-	iarray_write(w, num->cg_no);
+	iarray_write(w, num->font_no);
 }
 
 static void load_parts_numeral(struct iarray_reader *r, struct parts *parts,
@@ -147,7 +150,7 @@ static void load_parts_numeral(struct iarray_reader *r, struct parts *parts,
 	num->space = iarray_read(r);
 	num->show_comma = iarray_read(r);
 	num->length = iarray_read(r);
-	num->cg_no = iarray_read(r);
+	num->font_no = iarray_read(r);
 
 	if (num->have_num)
 		parts_numeral_set_number(parts, num, num->num);
@@ -483,6 +486,7 @@ static void save_parts(struct iarray_writer *w, struct parts *parts)
 	iarray_write(w, parts->linked_to);
 	iarray_write(w, parts->linked_from);
 	iarray_write(w, parts->draw_filter);
+	iarray_write(w, parts->message_window);
 
 	unsigned motion_count_pos = iarray_writer_pos(w);
 	iarray_write(w, 0); // size of motion list
@@ -497,7 +501,7 @@ static void save_parts(struct iarray_writer *w, struct parts *parts)
 	iarray_write_at(w, motion_count_pos, motion_count);
 }
 
-static void load_parts(struct iarray_reader *r)
+static void load_parts(struct iarray_reader *r, int version)
 {
 	int no = iarray_read(r);
 	struct parts *parts = parts_get(no);
@@ -518,6 +522,8 @@ static void load_parts(struct iarray_reader *r)
 	parts->linked_to = iarray_read(r);
 	parts->linked_from = iarray_read(r);
 	parts->draw_filter = iarray_read(r);
+	if (version > 0)
+		parts->message_window = iarray_read(r);
 
 	int motion_count = iarray_read(r);
 	for (int i = 0; i < motion_count; i++) {
@@ -526,6 +532,36 @@ static void load_parts(struct iarray_reader *r)
 	}
 
 	parts_list_resort(parts);
+	parts_component_dirty(parts);
+	parts_recalculate_hitbox(parts);
+}
+
+static void save_numeral_fonts(struct iarray_writer *w)
+{
+	iarray_write(w, parts_nr_numeral_fonts);
+	for (int i = 0; i < parts_nr_numeral_fonts; i++) {
+		struct parts_numeral_font *font = &parts_numeral_fonts[i];
+		iarray_write(w, font->type);
+		iarray_write(w, font->cg_no);
+		for (int i = 0; i < 12; i++) {
+			iarray_write(w, font->width[i]);
+		}
+	}
+}
+
+static void load_numeral_fonts(struct iarray_reader *r)
+{
+	parts_nr_numeral_fonts = iarray_read(r);
+	parts_numeral_fonts = xcalloc(parts_nr_numeral_fonts, sizeof(struct parts_numeral_font));
+	for (int i = 0; i < parts_nr_numeral_fonts; i++) {
+		struct parts_numeral_font *font = &parts_numeral_fonts[i];
+		font->type = iarray_read(r);
+		font->cg_no = iarray_read(r);
+		for (int i = 0; i < 12; i++) {
+			font->width[i] = iarray_read(r);
+		}
+		parts_numeral_font_init(font);
+	}
 }
 
 static bool parts_engine_save(struct page **buffer, bool save_hidden)
@@ -535,8 +571,10 @@ static bool parts_engine_save(struct page **buffer, bool save_hidden)
 
 	struct iarray_writer w;
 	iarray_init_writer(&w, "XPE");
-	iarray_write(&w, 0); // version
-	// TODO: first_free from GetFreeNumber?
+	iarray_write(&w, CURRENT_SAVE_VERSION);
+	if (CURRENT_SAVE_VERSION > 1)
+		save_numeral_fonts(&w);
+
 	unsigned count_pos = iarray_writer_pos(&w);
 	iarray_write(&w, 0); // size of parts list
 
@@ -583,10 +621,16 @@ bool PE_Load(struct page **buffer)
 		WARNING("unrecognized savedata magic");
 		return false;
 	}
-	if (iarray_read(&r) != 0) {
+	int version = iarray_read(&r);
+	if (version > CURRENT_SAVE_VERSION) {
 		WARNING("unrecognized savedata version");
 		return false;
 	}
+
+	parts_release_all();
+
+	if (version > 1)
+		load_numeral_fonts(&r);
 
 	int nr_parts = iarray_read(&r);
 	if (nr_parts < 0) {
@@ -594,11 +638,11 @@ bool PE_Load(struct page **buffer)
 		return false;
 	}
 
-	parts_release_all();
-
 	for (int i = 0; i < nr_parts; i++) {
-		load_parts(&r);
+		load_parts(&r, version);
 	}
+
+	PE_UpdateComponent(0);
 
 	return true;
 }

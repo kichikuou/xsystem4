@@ -202,6 +202,8 @@ void parts_render(struct parts *parts)
 {
 	if (!parts->global.show)
 		return;
+	if (parts->message_window && !parts_message_window_show)
+		return;
 	if (parts->linked_to >= 0) {
 		struct parts *link_parts = parts_get(parts->linked_to);
 		struct parts_state *link_state = &link_parts->states[link_parts->state];
@@ -233,6 +235,16 @@ void parts_render(struct parts *parts)
 	}
 }
 
+void parts_render_family(struct parts *parts)
+{
+	parts_render(parts);
+
+	struct parts *child;
+	PARTS_FOREACH_CHILD(child, parts) {
+		parts_render_family(child);
+	}
+}
+
 void parts_engine_render(possibly_unused struct sprite *_)
 {
 	struct parts *parts;
@@ -251,11 +263,6 @@ void parts_dirty(possibly_unused struct parts *parts)
 	parts_engine_dirty();
 }
 
-static cJSON *_parts_engine_to_json(struct sprite *_, bool verbose)
-{
-	return parts_engine_to_json(verbose);
-}
-
 void parts_render_init(void)
 {
 	goat_sprite.z = 0;
@@ -263,7 +270,7 @@ void parts_render_init(void)
 	goat_sprite.has_pixel = true;
 	goat_sprite.has_alpha = true;
 	goat_sprite.render = parts_engine_render;
-	goat_sprite.to_json = _parts_engine_to_json;
+	goat_sprite.to_json = parts_engine_to_json;
 	scene_register_sprite(&goat_sprite);
 
 	gfx_load_shader(&parts_shader.shader, "shaders/render.v.glsl", "shaders/parts.f.glsl");

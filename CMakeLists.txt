@@ -139,6 +139,8 @@ target_sources(xsystem4 PRIVATE
   src/hll/Confirm3.c
   src/hll/CrayfishLogViewer.c
   src/hll/Cursor.c
+  src/hll/DALKDemo.c
+  src/hll/DALKEDemo.c
   src/hll/Data.c
   src/hll/DataFile.c
   src/hll/DrawDungeon.c
@@ -192,6 +194,8 @@ target_sources(xsystem4 PRIVATE
   src/hll/vmCG.c
   src/hll/vmChrLoader.c
   src/hll/vmCursor.c
+  src/hll/vmDalkGaiden.c
+  src/hll/vmData.c
   src/hll/vmDialog.c
   src/hll/vmDrawGauge.c
   src/hll/vmDrawMsg.c
@@ -202,7 +206,6 @@ target_sources(xsystem4 PRIVATE
   src/hll/vmKey.c
   src/hll/vmMapLoader.c
   src/hll/vmMsgLog.c
-  src/hll/vmMsgSkip.c
   src/hll/vmMusic.c
   src/hll/vmSound.c
   src/hll/vmSprite.c

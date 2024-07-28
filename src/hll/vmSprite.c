@@ -35,10 +35,19 @@ struct child_surface {
 };
 
 struct animation {
+	int frame_s;
+	int frame_e;
 	int nr_frames;
 	int current_frame;
+	uint64_t time_origin;
 	int total_frame_time;
 	int frame_times[];
+};
+
+enum findability {
+	NOT_FINDABLE = 0,
+	FINDABLE_WHEN_VISIBLE = 1,
+	ALWAYS_FINDABLE = 2
 };
 
 struct vm_sprite {
@@ -48,7 +57,7 @@ struct vm_sprite {
 	Rectangle rect;
 	int current;
 	int id;
-	bool findable;
+	enum findability findability;
 	struct animation *anime;
 	struct id_pool children;
 };
@@ -77,7 +86,11 @@ static void update_animation(void)
 		struct vm_sprite *sp = id_pool_get(&pool, id);
 		if (!sp || !sp->anime)
 			continue;
-		int t = now % sp->anime->total_frame_time;
+		if (sp->current < sp->anime->frame_s || sp->current > sp->anime->frame_e) {
+			sp->anime->current_frame = 0;
+			continue;
+		}
+		int t = (now - sp->anime->time_origin) % sp->anime->total_frame_time;
 		int frame;
 		for (frame = 0; t >= sp->anime->frame_times[frame]; frame++)
 			t -= sp->anime->frame_times[frame];
@@ -158,6 +171,7 @@ static cJSON *vm_sprite_to_json(struct sprite *_sp, bool verbose)
 	cJSON_AddNumberToObject(sprite, "type", sp->type);
 	cJSON_AddItemToObjectCS(sprite, "rect", rectangle_to_json(&sp->rect, verbose));
 	cJSON_AddNumberToObject(sprite, "current", sp->current);
+	cJSON_AddNumberToObject(sprite, "findability", sp->findability);
 
 	cJSON_AddItemToObjectCS(sprite, "children", children = cJSON_CreateArray());
 	for (int id = id_pool_get_first(&sp->children); id >= 0; id = id_pool_get_next(&sp->children, id)) {
@@ -278,6 +292,9 @@ static int vmSprite_SetCurrent(int sprite, int current)
 		return 0;
 	if (sp->current != current) {
 		sp->current = current;
+		if (sp->anime) {
+			sp->anime->time_origin = SDL_GetTicks64();
+		}
 		vm_sprite_dirty(sp);
 	}
 	return 1;
@@ -357,7 +374,7 @@ static void vmSprite_SetFind(int sprite, int find)
 {
 	struct vm_sprite *sp = id_pool_get(&pool, sprite);
 	if (sp)
-		sp->findable = !!find;
+		sp->findability = find;
 }
 
 static void vmSprite_SetID(int sprite, int id)
@@ -377,8 +394,11 @@ static int vmSprite_SetAnime(int sprite, int frame_s, int frame_e, struct page *
 		free(sp->anime);
 	int nr_frames = array->nr_vars;
 	struct animation *a = xmalloc(sizeof(struct animation) + nr_frames * sizeof(int));
+	a->frame_s = frame_s;
+	a->frame_e = frame_e;
 	a->nr_frames = nr_frames;
 	a->current_frame = 0;
+	a->time_origin = SDL_GetTicks64();
 	a->total_frame_time = 0;
 	for (int i = 0; i < a->nr_frames; i++) {
 		a->total_frame_time += a->frame_times[i] = array->values[i].i;
@@ -470,7 +490,7 @@ static void vmSprite_DrawEffect(int effect, int time)
 
 		gfx_clear();
 		gfx_copy(screen, 0, 0, &base, 0, 0, screen->w, screen->h);
-		gfx_copy_root_zoom2(screen, cx, cy, &src, src.w / 2.0f, src.h / 2.0f, rate * -360, 1.0f - rate);
+		gfx_copy_rot_zoom2(screen, cx, cy, &src, src.w / 2.0f, src.h / 2.0f, rate * -360, 1.0f - rate);
 		gfx_swap();
 
 		uint64_t t2 = SDL_GetTicks64() - start;
@@ -502,7 +522,9 @@ static int vmSprite_FindPos(int x, int y)
 	Point p = { .x = x, .y = y };
 	for (int id = id_pool_get_first(&pool); id >= 0; id = id_pool_get_next(&pool, id)) {
 		struct vm_sprite *sp = id_pool_get(&pool, id);
-		if (!sp || !sp->findable)
+		if (!sp || sp->findability == NOT_FINDABLE)
+			continue;
+		if (sp->findability == FINDABLE_WHEN_VISIBLE && sp->sp.hidden)
 			continue;
 		if (!SDL_PointInRect(&p, &sp->rect))
 			continue;
@@ -575,7 +597,7 @@ static int vmSprite_GetShow(int sprite)
 static int vmSprite_GetFind(int sprite)
 {
 	struct vm_sprite *sp = id_pool_get(&pool, sprite);
-	return sp ? sp->findable : 0;
+	return sp ? sp->findability : 0;
 }
 
 static int vmSprite_GetID(int sprite)

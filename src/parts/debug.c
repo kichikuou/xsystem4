@@ -14,6 +14,8 @@
  * along with this program; if not, see <http://gnu.org/licenses/>.
  */
 
+#include <math.h>
+
 #include "system4.h"
 #include "system4/cg.h"
 #include "system4/string.h"
@@ -52,7 +54,8 @@ static void parts_text_to_json(struct parts_text *text, cJSON *out, bool verbose
 		free_string(s);
 	}
 	cJSON_AddNumberToObject(out, "line_space", text->line_space);
-	cJSON_AddItemToObjectCS(out, "cursor", point_to_json(&text->cursor, verbose));
+	Point cursor = { lroundf(text->cursor.x), text->cursor.y };
+	cJSON_AddItemToObjectCS(out, "cursor", point_to_json(&cursor, verbose));
 	cJSON_AddItemToObjectCS(out, "text_style", text_style_to_json(&text->ts, verbose));
 }
 
@@ -79,10 +82,16 @@ static void parts_numeral_to_json(struct parts_numeral *num, cJSON *out, bool ve
 	cJSON_AddNumberToObject(out, "space", num->space);
 	cJSON_AddBoolToObject(out, "show_comma", num->show_comma);
 	cJSON_AddNumberToObject(out, "length", num->length);
-	cJSON_AddNumberToObject(out, "cg_no", num->cg_no);
-	cJSON_AddItemToObjectCS(out, "cg", cg = cJSON_CreateArray());
-	for (int i = 0; i < 12; i++) {
-		cJSON_AddItemToArray(cg, texture_to_json(&num->cg[i], verbose));
+	if (num->font_no >= 0) {
+		struct parts_numeral_font *font = &parts_numeral_fonts[num->font_no];
+		cJSON_AddNumberToObject(out, "cg_no", font->cg_no);
+		cJSON_AddItemToObjectCS(out, "cg", cg = cJSON_CreateArray());
+		for (int i = 0; i < 12; i++) {
+			cJSON_AddItemToArray(cg, texture_to_json(&font->cg[i], verbose));
+		}
+	} else {
+		cJSON_AddNumberToObject(out, "cg_no", -1);
+		cJSON_AddItemToObjectCS(out, "cg", cg = cJSON_CreateArray());
 	}
 }
 
@@ -198,6 +207,10 @@ static cJSON *parts_state_to_json(struct parts_state *state, bool verbose)
 
 	cJSON *obj = cJSON_CreateObject();
 	cJSON_AddStringToObject(obj, "type", type);
+	cJSON_AddItemToObjectCS(obj, "size", wh_to_json(state->common.w, state->common.h, verbose));
+	cJSON_AddItemToObjectCS(obj, "origin_offset", point_to_json(&state->common.origin_offset, verbose));
+	cJSON_AddItemToObjectCS(obj, "hitbox", rectangle_to_json(&state->common.hitbox, verbose));
+	cJSON_AddItemToObjectCS(obj, "surface_area", rectangle_to_json(&state->common.surface_area, verbose));
 
 	switch (state->type) {
 	case PARTS_UNINITIALIZED:
@@ -349,6 +362,7 @@ cJSON *parts_to_json(struct parts *parts, bool verbose)
 	if (parts->linked_from >= 0)
 		cJSON_AddNumberToObject(obj, "linked_from", parts->linked_from);
 	cJSON_AddNumberToObject(obj, "draw_filter", parts->draw_filter);
+	cJSON_AddBoolToObject(obj, "message_window", parts->message_window);
 
 	cJSON_AddItemToObjectCS(obj, "motions", motions = cJSON_CreateArray());
 	struct parts_motion *motion;
@@ -365,16 +379,22 @@ cJSON *parts_to_json(struct parts *parts, bool verbose)
 	return obj;
 }
 
-cJSON *parts_engine_to_json(bool verbose)
+cJSON *parts_engine_to_json(struct sprite *sp, bool verbose)
 {
-	cJSON *a = cJSON_CreateArray();
+	// XXX: only add parts to sprite object in verbose mode
+	cJSON *obj = scene_sprite_to_json(sp, verbose);
+	if (!verbose)
+		return obj;
+
+	cJSON *a;
+	cJSON_AddItemToObjectCS(obj, "parts", a = cJSON_CreateArray());
 
 	struct parts *parts;
 	PARTS_LIST_FOREACH(parts) {
 		if (!parts->parent)
 			cJSON_AddItemToArray(a, parts_to_json(parts, verbose));
 	}
-	return a;
+	return obj;
 }
 
 #ifdef DEBUGGER_ENABLED
@@ -426,7 +446,7 @@ static void parts_list_print(struct parts *parts, int indent)
 		sys_message("(animation %d+%d)", state->anim.start_no, state->anim.nr_frames);
 		break;
 	case PARTS_NUMERAL:
-		sys_message("(numeral %d)", state->num.cg_no);
+		sys_message("(numeral %d)", state->num.font_no);
 		break;
 	case PARTS_HGAUGE:
 		sys_message("(hgauge)"); // TODO? store rate and cg and print them here

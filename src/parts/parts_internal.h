@@ -79,7 +79,7 @@ struct sound_motion {
 struct parts_text_char {
 	Texture t;
 	char ch[4];
-	int advance;
+	float advance;
 	Point off;
 };
 
@@ -87,7 +87,7 @@ struct parts_text_line {
 	struct parts_text_char *chars;
 	int nr_chars;
 	unsigned height;
-	unsigned width;
+	float width;
 };
 
 enum parts_type {
@@ -122,7 +122,7 @@ struct parts_text {
 	unsigned nr_lines;
 	struct parts_text_line *lines;
 	unsigned line_space;
-	Point cursor;
+	struct { float x; int y; } cursor;
 	struct text_style ts;
 };
 
@@ -137,15 +137,28 @@ struct parts_animation {
 	unsigned current_frame;
 };
 
+enum parts_numeral_font_type {
+	// each digit has a separate CG
+	PARTS_NUMERAL_FONT_SEPARATE = 0,
+	// digits packed into single CG
+	PARTS_NUMERAL_FONT_COMBINED = 1,
+};
+
+struct parts_numeral_font {
+	enum parts_numeral_font_type type;
+	int cg_no;
+	int width[12];
+	Texture cg[12];
+};
+
 struct parts_numeral {
 	struct parts_common common;
-	Texture cg[12];
 	bool have_num;
 	int num;
 	int space;
 	int show_comma;
 	int length;
-	int cg_no;
+	int font_no;
 };
 
 struct parts_gauge {
@@ -287,6 +300,7 @@ struct parts {
 	int linked_to;
 	int linked_from;
 	int draw_filter;
+	bool message_window;
 	TAILQ_HEAD(, parts_motion) motion;
 };
 
@@ -315,9 +329,15 @@ void parts_set_state(struct parts *parts, enum parts_state_type state);
 void parts_release(int parts_no);
 void parts_release_all(void);
 void parts_set_surface_area(struct parts *parts, struct parts_common *common, int x, int y, int w, int h);
+extern bool parts_message_window_show;
+
+extern struct parts_numeral_font *parts_numeral_fonts;
+extern int parts_nr_numeral_fonts;
 
 // for save.c
 void parts_list_resort(struct parts *parts);
+void parts_component_dirty(struct parts *parts);
+void parts_recalculate_hitbox(struct parts *parts);
 void parts_state_reset(struct parts_state *state, enum parts_type type);
 bool parts_cg_set(struct parts *parts, struct parts_cg *cg, struct string *cg_name);
 bool parts_cg_set_by_index(struct parts *parts, struct parts_cg *cg, int cg_no);
@@ -326,6 +346,7 @@ bool parts_animation_set_cg_by_index(struct parts *parts, struct parts_animation
 		int cg_no, int nr_frames, int frame_time);
 bool parts_animation_set_cg(struct parts *parts, struct parts_animation *anim,
 		struct string *cg_name, int start_no, int nr_frames, int frame_time);
+void parts_numeral_font_init(struct parts_numeral_font *font);
 bool parts_numeral_set_number(struct parts *parts, struct parts_numeral *num, int n);
 bool parts_gauge_set_cg(struct parts *parts, struct parts_gauge *g, struct string *cg_name);
 bool parts_gauge_set_cg_by_index(struct parts *parts, struct parts_gauge *g, int cg_no);
@@ -342,6 +363,7 @@ void parts_render_init(void);
 void parts_engine_dirty(void);
 void parts_dirty(struct parts *parts);
 void parts_render(struct parts *parts);
+void parts_render_family(struct parts *parts);
 
 // motion.c
 void parts_clear_motion(struct parts *parts);
@@ -364,8 +386,9 @@ bool parts_flash_update(struct parts_flash *f, int passed_time);
 bool parts_flash_seek(struct parts_flash *f, int frame);
 
 // debug.c
+struct sprite;
 void parts_debug_init(void);
-cJSON *parts_engine_to_json(bool verbose);
+cJSON *parts_engine_to_json(struct sprite *sp, bool verbose);
 
 static inline bool parts_state_valid(int state)
 {

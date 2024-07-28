@@ -342,13 +342,23 @@ void gfx_clear(void)
 	glClear(GL_COLOR_BUFFER_BIT);
 }
 
+static mat4 mw_transform = GLM_MAT4_IDENTITY_INIT;
+
+void gfx_set_view_offset(int x, int y)
+{
+	glm_mat4_identity(mw_transform);
+	if (!x && !y)
+		return;
+	vec3 off = { (float)x / config.view_width, (float)y / config.view_height, 0 };
+	glm_translate(mw_transform, off);
+}
+
 void gfx_swap(void)
 {
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	glViewport(sdl.viewport.x, sdl.viewport.y, sdl.viewport.w, sdl.viewport.h);
 	gfx_clear();
 
-	static mat4 mw_transform = GLM_MAT4_IDENTITY_INIT;
 	static mat4 wv_transform = MAT4(
 		2,  0, 0, -1,
 		0, -2, 0,  1,
@@ -516,16 +526,12 @@ void gfx_init_texture_rgb(struct texture *t, int w, int h, SDL_Color color)
 		WARNING("Texture height %d exceeds maximum texture size %d", h, max_texture_size);
 		h = max_texture_size;
 	}
-	uint8_t *pixels = xmalloc(w*h*3);
-	for (int i = 0; i < w*h; i++) {
-		pixels[i*3+0] = color.r;
-		pixels[i*3+1] = color.g;
-		pixels[i*3+2] = color.b;
-	}
-
 	init_texture(t, w, h);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, w, h, 0, GL_RGB, GL_UNSIGNED_BYTE, pixels);
-	free(pixels);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, w, h, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+	GLuint fbo = gfx_set_framebuffer(GL_DRAW_FRAMEBUFFER, t, 0, 0, w, h);
+	glClearColor(color.r / 255.f, color.g / 255.f, color.b / 255.f, 255.f);
+	glClear(GL_COLOR_BUFFER_BIT);
+	gfx_reset_framebuffer(GL_DRAW_FRAMEBUFFER, fbo);
 }
 
 void gfx_init_texture_amap(struct texture *t, int w, int h, uint8_t *amap, SDL_Color color)

@@ -26,6 +26,11 @@ enum ain_data_type;
 struct page;
 struct string;
 
+// xsystem4-specific system calls (used for hacks)
+enum vm_extra_syscall {
+	VM_XSYS_KEY_IS_DOWN = 0x80000000,
+};
+
 // Non-heap values. Stored in pages and on the stack.
 union vm_value {
 	int32_t i;
@@ -131,6 +136,7 @@ struct string *string_format(struct string *fmt, union vm_value arg, enum string
 void vm_stack_trace(void);
 _Noreturn void _vm_error(const char *fmt, ...);
 _Noreturn void vm_exit(int code);
+_Noreturn void vm_reset(void);
 
 #ifdef __ANDROID__
 // Report the error with a message box and exit.

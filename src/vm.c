@@ -461,8 +461,6 @@ static const SDL_MessageBoxButtonData buttons[] = {
 	{ SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT, 0, "Cancel" },
 };
 
-static _Noreturn void vm_reset(void);
-
 static struct string *get_func_stack_name(int index)
 {
 	int i = call_stack_ptr - (1 + index);
@@ -709,7 +707,14 @@ static void system_call(enum syscall_code code)
 		break;
 	}
 	default:
-		VM_ERROR("Unimplemented syscall: 0x%X", code);
+		// xsystem4-specific system calls (used for hacks)
+		switch ((enum vm_extra_syscall)code) {
+		case VM_XSYS_KEY_IS_DOWN:
+			stack_push(key_is_down(stack_pop().i));
+			break;
+		default:
+			VM_ERROR("Unimplemented syscall: 0x%X", code);
+		}
 	}
 }
 
@@ -853,6 +858,10 @@ static enum opcode execute_instruction(enum opcode opcode)
 		stack_push(local_get(get_argument(0)).i);
 		break;
 	}
+	case _EOF: // In Ain v0, opcode 0x62 is not EOF but SH_STRUCTREF
+		if (ain->version != 0)
+			VM_ERROR("Illegal opcode: 0x%04x", opcode);
+		// fallthrough
 	case SH_STRUCTREF: { // VARNO
 		stack_push(member_get(get_argument(0)));
 		break;
@@ -1418,7 +1427,10 @@ static enum opcode execute_instruction(enum opcode opcode)
 	// --- Strings ---
 	//
 	case S_PUSH: {
-		stack_push_string(string_ref(ain->strings[get_argument(0)]));
+		if (ain->version == 0)
+			stack_push_string(string_ref(ain->messages[get_argument(0)]));
+		else
+			stack_push_string(string_ref(ain->strings[get_argument(0)]));
 		break;
 	}
 	case S_POP: {
@@ -2336,7 +2348,7 @@ static void vm_free(void)
 
 static jmp_buf reset_buf;
 
-static _Noreturn void vm_reset(void)
+_Noreturn void vm_reset(void)
 {
 	vm_free();
 	longjmp(reset_buf, 1);
