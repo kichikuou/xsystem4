@@ -161,11 +161,7 @@ static void parts_state_free(struct parts_state *state)
 		break;
 	case PARTS_CONSTRUCTION_PROCESS:
 		gfx_delete_texture(&state->common.texture);
-		while (!TAILQ_EMPTY(&state->cproc.ops)) {
-			struct parts_cp_op *op = TAILQ_FIRST(&state->cproc.ops);
-			TAILQ_REMOVE(&state->cproc.ops, op, entry);
-			parts_cp_op_free(op);
-		}
+		parts_clear_construction_process(&state->cproc);
 		break;
 	case PARTS_FLASH:
 		parts_flash_free(&state->flash);
@@ -286,15 +282,15 @@ struct parts_flash *parts_get_flash(struct parts *parts, int state)
 static Point calculate_offset(int mode, int w, int h)
 {
 	switch (mode) {
-	case 1:  return (Point) {    0, 0    };
-	case 2:  return (Point) { -w/2, 0    };
-	case 3:  return (Point) {   -w, -h/2 };
-	case 4:  return (Point) {    0, -h/2 };
-	case 5:  return (Point) { -w/2, -h/2 };
-	case 6:  return (Point) {   -w, -h/2 };
-	case 7:  return (Point) {    0, -h   };
-	case 8:  return (Point) { -w/2, -h   };
-	case 9:  return (Point) {   -w, -h   };
+	case 1:  return (Point) {    0, 0    }; // top-left
+	case 2:  return (Point) { -w/2, 0    }; // top-center
+	case 3:  return (Point) {   -w, 0    }; // top-right
+	case 4:  return (Point) {    0, -h/2 }; // middle-left
+	case 5:  return (Point) { -w/2, -h/2 }; // middle-center
+	case 6:  return (Point) {   -w, -h/2 }; // middle-right
+	case 7:  return (Point) {    0, -h   }; // bottom-left
+	case 8:  return (Point) { -w/2, -h   }; // bottom-center
+	case 9:  return (Point) {   -w, -h   }; // bottom-right
 	default: return (Point) { mode, (3*h)/4 }; // why...
 	}
 }
@@ -504,6 +500,40 @@ void parts_set_scale_y(struct parts *parts, float mag)
 	parts_dirty(parts);
 }
 
+static void parts_update_global_rotate_x(struct parts *parts, float parent_rot_x)
+{
+	parts->global.rotation.x = parent_rot_x + parts->local.rotation.x;
+
+	struct parts *child;
+	PARTS_FOREACH_CHILD(child, parts) {
+		parts_update_global_rotate_x(child, parts->global.rotation.x);
+	}
+}
+
+void parts_set_rotation_x(struct parts *parts, float rot)
+{
+	parts->local.rotation.x = rot;
+	parts_update_global_rotate_x(parts, parts->parent ? parts->parent->global.rotation.x : 0.0f);
+	parts_dirty(parts);
+}
+
+static void parts_update_global_rotate_y(struct parts *parts, float parent_rot_y)
+{
+	parts->global.rotation.y = parent_rot_y + parts->local.rotation.y;
+
+	struct parts *child;
+	PARTS_FOREACH_CHILD(child, parts) {
+		parts_update_global_rotate_y(child, parts->global.rotation.y);
+	}
+}
+
+void parts_set_rotation_y(struct parts *parts, float rot)
+{
+	parts->local.rotation.y = rot;
+	parts_update_global_rotate_y(parts, parts->parent ? parts->parent->global.rotation.y : 0.0f);
+	parts_dirty(parts);
+}
+
 static void parts_update_global_rotate_z(struct parts *parts, float parent_rot_z)
 {
 	parts->global.rotation.z = parent_rot_z + parts->local.rotation.z;
@@ -574,6 +604,18 @@ void parts_numeral_font_init(struct parts_numeral_font *font)
 			gfx_init_texture_with_cg(&font->cg[i], cg);
 			cg_free(cg);
 		}
+	} else if (font->type == PARTS_NUMERAL_FONT_SEPARATE2) {
+		for (int i = 0; i < 12; i++) {
+			if (font->width[i] < 0)
+				continue;
+			struct cg *cg = asset_cg_load(font->width[i]);
+			if (!cg) {
+				font->cg[i].handle = 0;
+				continue;
+			}
+			gfx_init_texture_with_cg(&font->cg[i], cg);
+			cg_free(cg);
+		}
 	} else if (font->type == PARTS_NUMERAL_FONT_COMBINED) {
 		int x = 0;
 		Texture t = {0};
@@ -607,6 +649,48 @@ static int parts_load_numeral_font_separate(int cg_no)
 	struct parts_numeral_font *font = &parts_numeral_fonts[font_no];
 	font->cg_no = cg_no;
 	font->type = PARTS_NUMERAL_FONT_SEPARATE;
+	parts_numeral_font_init(font);
+	return font_no;
+}
+
+static int parts_load_numeral_font_separate_string(struct string *cg_name)
+{
+	// convert name to CG indices
+	int indices[12];
+	for (int i = 0; i < 12; i++) {
+		struct string *name = string_format(cg_name, (union vm_value){.i = i}, STRFMT_INT);
+		if (!asset_exists_by_name(ASSET_CG, name->text, &indices[i])) {
+			WARNING("numeral cg doesn't exist: %s", display_sjis0(name->text));
+			indices[i] = -1;
+		}
+		free_string(name);
+	}
+
+	// find existing font
+	for (int i = 0; i < parts_nr_numeral_fonts; i++) {
+		struct parts_numeral_font *font = &parts_numeral_fonts[i];
+		if (font->type != PARTS_NUMERAL_FONT_SEPARATE2)
+			continue;
+		bool not_match = false;
+		for (int d = 0; d < 12; d++) {
+			if (font->width[d] != indices[d]) {
+				not_match = true;
+				break;
+			}
+		}
+		if (not_match)
+			continue;
+		return i;
+	}
+
+	// load new font
+	int font_no = parts_nr_numeral_fonts++;
+	parts_numeral_fonts = xrealloc_array(parts_numeral_fonts, font_no, font_no + 1,
+			sizeof(struct parts_numeral_font));
+	struct parts_numeral_font *font = &parts_numeral_fonts[font_no];
+	font->cg_no = indices[0];
+	font->type = PARTS_NUMERAL_FONT_SEPARATE2;
+	memcpy(font->width, indices, sizeof(int) * 12);
 	parts_numeral_font_init(font);
 	return font_no;
 }
@@ -713,7 +797,7 @@ bool parts_numeral_set_number(struct parts *parts, struct parts_numeral *num, in
 
 void parts_set_state(struct parts *parts, enum parts_state_type state)
 {
-	if (parts->state != state) {
+	if (parts->state != state && parts->states[state].type != PARTS_UNINITIALIZED) {
 		parts->state = state;
 		parts_dirty(parts);
 	}
@@ -923,7 +1007,7 @@ void PE_Update(int passed_time, bool message_window_show)
 	audio_update();
 	parts_update_animation(passed_time);
 	PE_UpdateInputState(passed_time);
-	parts_engine_dirty();
+	parts_render_update(passed_time);
 }
 
 void PE_UpdateParts(int passed_time, possibly_unused bool is_skip, bool message_window_show)
@@ -931,7 +1015,7 @@ void PE_UpdateParts(int passed_time, possibly_unused bool is_skip, bool message_
 	parts_message_window_show = message_window_show;
 	audio_update();
 	parts_update_animation(passed_time);
-	parts_engine_dirty();
+	parts_render_update(passed_time);
 }
 
 void PE_SetDelegateIndex(int parts_no, int delegate_index)
@@ -1233,18 +1317,23 @@ void parts_vgauge_set_rate(struct parts *parts, struct parts_gauge *g, float rat
 	g->rate = rate;
 }
 
-bool PE_SetHGaugeRate(int parts_no, int numerator, int denominator, int state)
+bool PE_SetHGaugeRate(int parts_no, float numerator, float denominator, int state)
 {
 	if (!parts_state_valid(--state))
 		return false;
 
 	struct parts *parts = parts_get(parts_no);
 	struct parts_gauge *g = parts_get_hgauge(parts, state);
-	parts_hgauge_set_rate(parts, g, (float)numerator/(float)denominator);
+	parts_hgauge_set_rate(parts, g, numerator/denominator);
 	return true;
 }
 
-bool PE_SetVGaugeRate(int parts_no, int numerator, int denominator, int state)
+bool PE_SetHGaugeRate_int(int parts_no, int numerator, int denominator, int state)
+{
+	return PE_SetHGaugeRate(parts_no, numerator, denominator, state);
+}
+
+bool PE_SetVGaugeRate(int parts_no, float numerator, float denominator, int state)
 {
 	if (!parts_state_valid(--state))
 		return false;
@@ -1253,6 +1342,11 @@ bool PE_SetVGaugeRate(int parts_no, int numerator, int denominator, int state)
 	struct parts_gauge *g = parts_get_vgauge(parts, state);
 	parts_vgauge_set_rate(parts, g, (float)numerator/(float)denominator);
 	return true;
+}
+
+bool PE_SetVGaugeRate_int(int parts_no, int numerator, int denominator, int state)
+{
+	return PE_SetVGaugeRate(parts_no, numerator, denominator, state);
 }
 
 bool PE_SetHGaugeSurfaceArea(int parts_no, int x, int y, int w, int h, int state)
@@ -1274,6 +1368,15 @@ bool PE_SetVGaugeSurfaceArea(int parts_no, int x, int y, int w, int h, int state
 	struct parts *parts = parts_get(parts_no);
 	struct parts_gauge *g = parts_get_vgauge(parts, state);
 	parts_set_surface_area(parts, &g->common, x, y, w, h);
+	return true;
+}
+
+bool PE_SetNumeralCG(int parts_no, struct string *cg_name, int state)
+{
+	if (!parts_state_valid(--state))
+		return false;
+	struct parts_numeral *n = parts_get_numeral(parts_get(parts_no), state);
+	n->font_no = parts_load_numeral_font_separate_string(cg_name);
 	return true;
 }
 
@@ -1389,8 +1492,6 @@ bool PE_SetNumeralSurfaceArea(int parts_no, int x, int y, int w, int h, int stat
 	return true;
 }
 
-bool PE_SetPartsRectangleDetectionSize(int PartsNumber, int Width, int Height, int State);
-
 void PE_ReleaseParts(int parts_no)
 {
 	parts_release(parts_no);
@@ -1430,7 +1531,7 @@ void PE_SetAlpha(int parts_no, int alpha)
 void PE_SetPartsDrawFilter(int parts_no, int draw_filter)
 {
 	if (draw_filter && draw_filter != 1)
-		NOTICE("PE_SetPartsDrawFilter(%d, %d)", parts_no, draw_filter);
+		UNIMPLEMENTED("(%d, %d)", parts_no, draw_filter);
 	parts_get(parts_no)->draw_filter = draw_filter;
 }
 
@@ -1517,8 +1618,26 @@ int PE_GetPartsAlpha(int parts_no)
 	return parts_get(parts_no)->local.alpha;
 }
 
-void PE_GetAddColor(int PartsNumber, int *nR, int *nG, int *nB);
-void PE_GetMultiplyColor(int PartsNumber, int *nR, int *nG, int *nB);
+int PE_GetPartsDrawFilter(int parts_no)
+{
+	return parts_get(parts_no)->draw_filter;
+}
+
+void PE_GetAddColor(int parts_no, int *r, int *g, int *b)
+{
+	struct parts *parts = parts_get(parts_no);
+	*r = parts->local.add_color.r;
+	*g = parts->local.add_color.g;
+	*b = parts->local.add_color.b;
+}
+
+void PE_GetMultiplyColor(int parts_no, int *r, int *g, int *b)
+{
+	struct parts *parts = parts_get(parts_no);
+	*r = parts->local.multiply_color.r;
+	*g = parts->local.multiply_color.g;
+	*b = parts->local.multiply_color.b;
+}
 
 void PE_SetPartsOriginPosMode(int parts_no, int origin_pos_mode)
 {
@@ -1539,10 +1658,17 @@ void PE_SetParentPartsNumber(int parts_no, int parent_parts_no)
 	parts_component_dirty(parts);
 }
 
+int PE_GetParentPartsNumber(int parts_no)
+{
+	struct parts *parts = parts_get(parts_no);
+	if (parts->parent)
+		return parts->parent->no;
+	return -1;
+}
+
 bool PE_SetPartsGroupNumber(possibly_unused int PartsNumber, possibly_unused int GroupNumber)
 {
-	// TODO
-	WARNING("PE_SetPartsGroupNumber(%d, %d)", PartsNumber, GroupNumber);
+	UNIMPLEMENTED("(%d, %d)", PartsNumber, GroupNumber);
 	return true;
 }
 
@@ -1552,12 +1678,20 @@ void PE_SetPartsMessageWindowShowLink(possibly_unused int parts_no, bool message
 	parts->message_window = message_window_show_link;
 }
 
-bool PE_GetPartsMessageWindowShowLink(int PartsNumber);
+bool PE_GetPartsMessageWindowShowLink(int parts_no)
+{
+	return parts_get(parts_no)->message_window;
+}
 
 void PE_SetPartsMagX(int parts_no, float scale_x)
 {
 	struct parts *parts = parts_get(parts_no);
 	parts_set_scale_x(parts, scale_x);
+}
+
+float PE_GetPartsMagX(int parts_no)
+{
+	return parts_get(parts_no)->local.scale.x;
 }
 
 void PE_SetPartsMagY(int parts_no, float scale_y)
@@ -1566,39 +1700,74 @@ void PE_SetPartsMagY(int parts_no, float scale_y)
 	parts_set_scale_y(parts, scale_y);
 }
 
+float PE_GetPartsMagY(int parts_no)
+{
+	return parts_get(parts_no)->local.scale.y;
+}
+
 void PE_SetPartsRotateX(int parts_no, float rot_x)
 {
-	//NOTICE("PE_SetPartsRotateX(%d, %f)", parts_no, rot_x);
+	UNIMPLEMENTED("(%d, %f)", parts_no, rot_x);
+	parts_set_rotation_x(parts_get(parts_no), rot_x);
 }
 
 void PE_SetPartsRotateY(int parts_no, float rot_y)
 {
-	//NOTICE("PE_SetPartsRotateY(%d, %f)", parts_no, rot_y);
+	UNIMPLEMENTED("(%d, %f)", parts_no, rot_y);
+	parts_set_rotation_y(parts_get(parts_no), rot_y);
 }
 
 void PE_SetPartsRotateZ(int parts_no, float rot_z)
 {
-	struct parts *parts = parts_get(parts_no);
-	parts_set_rotation_z(parts, rot_z);
+	parts_set_rotation_z(parts_get(parts_no), rot_z);
 }
 
-void PE_SetPartsAlphaClipperPartsNumber(int PartsNumber, int AlphaClipperPartsNumber);
+float PE_GetPartsRotateZ(int parts_no)
+{
+	return parts_get(parts_no)->local.rotation.z;
+}
 
 void PE_SetPartsPixelDecide(int parts_no, bool pixel_decide)
 {
-	//NOTICE("PE_SetPartsPixelDecide(%d, %s)", parts_no, pixel_decide ? "true" : "false");
+	//UNIMPLEMENTED("(%d, %s)", parts_no, pixel_decide ? "true" : "false");
 }
 
 bool PE_SetThumbnailReductionSize(int reduction_size)
 {
-	NOTICE("PE_SetThumbnailReductionSize(%d)", reduction_size);
+	UNIMPLEMENTED("(%d)", reduction_size);
 	return true;
 }
 
 bool PE_SetThumbnailMode(bool mode)
 {
-	NOTICE("PE_SetThumbnailMode(%s)", mode ? "true" : "false");
+	UNIMPLEMENTED("(%s)", mode ? "true" : "false");
 	return true;
+}
+
+void PE_SetInputState(int parts_no, int state)
+{
+	if (!parts_state_valid(--state)) {
+		WARNING("invalid input state: %d", state);
+		return;
+	}
+	parts_set_state(parts_get(parts_no), state);
+}
+
+int PE_GetInputState(int parts_no)
+{
+	return parts_get(parts_no)->state + 1;
+}
+
+bool PE_SetPartsRectangleDetectionSize(int parts_no, int w, int h, int state)
+{
+	UNIMPLEMENTED("(%d, %d, %d, %d)", parts_no, w, h, state);
+	return false;
+}
+
+bool PE_SetPartsCGDetectionSize(int parts_no, struct string *cg_name, int state)
+{
+	UNIMPLEMENTED("(%d, %s, %d)", parts_no, display_sjis0(cg_name->text), state);
+	return false;
 }
 
 int PE_GetFreeNumber(void)
@@ -1615,4 +1784,10 @@ int PE_GetFreeNumber(void)
 bool PE_IsExist(int parts_no)
 {
 	return !!ht_get_int(parts_table, parts_no, NULL);
+}
+
+void PE_SetSpeedupRateByMessageSkip(int parts_no, int rate)
+{
+	if (rate != 1)
+		UNIMPLEMENTED("(%d, %d)");
 }

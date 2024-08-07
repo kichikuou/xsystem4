@@ -206,7 +206,12 @@ struct movie_context *movie_load(const char *filename)
 {
 	struct movie_context *mc = xcalloc(1, sizeof(struct movie_context));
 	mc->voice = -1;
-	char *path = gamedir_path(filename);
+	char *path = gamedir_path_icase(filename);
+	if (!path) {
+		WARNING("%s: file does not exist", filename);
+		movie_free(mc);
+		return NULL;
+	}
 	int ret;
 	if ((ret = avformat_open_input(&mc->format_ctx, path, NULL, NULL)) != 0) {
 		WARNING("%s: avformat_open_input failed: %d", path, ret);

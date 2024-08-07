@@ -138,10 +138,12 @@ struct parts_animation {
 };
 
 enum parts_numeral_font_type {
-	// each digit has a separate CG
+	// each digit has a separate CG (only first CG number stored in `cg_no` member)
 	PARTS_NUMERAL_FONT_SEPARATE = 0,
 	// digits packed into single CG
 	PARTS_NUMERAL_FONT_COMBINED = 1,
+	// each digit has a separate CG (CG numbers stored in `width` member)
+	PARTS_NUMERAL_FONT_SEPARATE2 = 2,
 };
 
 struct parts_numeral_font {
@@ -227,12 +229,31 @@ struct parts_construction_process {
 	TAILQ_HEAD(, parts_cp_op) ops;
 };
 
+enum parts_flash_blend_mode {
+	PARTS_FLASH_BLEND_NORMAL0    = 0,
+	PARTS_FLASH_BLEND_NORMAL1    = 1,
+	PARTS_FLASH_BLEND_LAYER      = 2,
+	PARTS_FLASH_BLEND_MULTIPLY   = 3,
+	PARTS_FLASH_BLEND_SCREEN     = 4,
+	PARTS_FLASH_BLEND_LIGHTEN    = 5,
+	PARTS_FLASH_BLEND_DARKEN     = 6,
+	PARTS_FLASH_BLEND_DIFFERENCE = 7,
+	PARTS_FLASH_BLEND_ADD        = 8,
+	PARTS_FLASH_BLEND_SUBTRACT   = 9,
+	PARTS_FLASH_BLEND_INVERT     = 10,
+	PARTS_FLASH_BLEND_ALPHA      = 11,
+	PARTS_FLASH_BLEND_ERASE      = 12,
+	PARTS_FLASH_BLEND_OVERLAY    = 13,
+	PARTS_FLASH_BLEND_HARDLIGHT  = 14,
+};
+
 struct parts_flash_object {
 	TAILQ_ENTRY(parts_flash_object) entry;
 	uint16_t depth;
 	uint16_t character_id;
 	mat4 matrix;
 	struct swf_cxform_with_alpha color_transform;
+	enum parts_flash_blend_mode blend_mode;
 };
 
 struct parts_flash {
@@ -360,7 +381,9 @@ struct string *parts_text_get(struct parts_text *t);
 
 // render.c
 void parts_render_init(void);
+void parts_render_update(int passed_time);
 void parts_engine_dirty(void);
+void parts_engine_clean(void);
 void parts_dirty(struct parts *parts);
 void parts_render(struct parts *parts);
 void parts_render_family(struct parts *parts);
@@ -378,6 +401,7 @@ void parts_cp_op_free(struct parts_cp_op *op);
 void parts_add_cp_op(struct parts_construction_process *cproc, struct parts_cp_op *op);
 bool parts_build_construction_process(struct parts *parts,
 		struct parts_construction_process *cproc);
+bool parts_clear_construction_process(struct parts_construction_process *cproc);
 
 // flash.c
 void parts_flash_free(struct parts_flash *f);

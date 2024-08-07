@@ -62,8 +62,12 @@ void indent_message(int indent, const char *fmt, ...);
 
 void log_message(const char *log, const char *fmt, ...);
 
+#define UNIMPLEMENTED(fmt, ...) \
+	sys_warning("unimplemented: %s" fmt "\n", __func__, ##__VA_ARGS__)
+
 char *unix_path(const char *path);
 char *gamedir_path(const char *path);
+char *gamedir_path_icase(const char *path);
 char *savedir_path(const char *path);
 
 void get_date(int *year, int *month, int *mday, int *wday);

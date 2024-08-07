@@ -101,6 +101,9 @@ static cJSON *heap_item_to_json(int i, possibly_unused void *_)
 		cJSON_AddItemToArray(item, cJSON_CreateString(heap[i].s->text));
 		break;
 	}
+	if (ain->nr_delegates > 0) {
+		cJSON_AddItemToArray(item, cJSON_CreateNumber(heap[i].seq));
+	}
 	return item;
 }
 
@@ -116,8 +119,6 @@ static cJSON *funcall_to_json(struct function_call *call)
 	cJSON_AddNumberToObject(json, "return-address", call->return_address);
 	cJSON_AddNumberToObject(json, "local-page", call->page_slot);
 	cJSON_AddNumberToObject(json, "struct-page", call->struct_page);
-	if (call->delegate >= 0)
-		cJSON_AddNumberToObject(json, "delegate", call->delegate);
 	return json;
 }
 
@@ -147,13 +148,17 @@ static cJSON *vm_image_to_json(const char *key)
 	cJSON_AddItemToObject(image, "call-stack", call_stack_to_json());
 	cJSON_AddItemToObject(image, "stack", stack_to_json());
 	cJSON_AddNumberToObject(image, "ip", instr_ptr);
+	if (ain->nr_delegates > 0) {
+		cJSON_AddNumberToObject(image, "next_seq", heap_next_seq);
+	}
 	return image;
 }
 
-static struct rsave_heap_frame *frame_page_to_rsave(struct page *page, int ref)
+static struct rsave_heap_frame *frame_page_to_rsave(struct page *page, int slot)
 {
 	struct rsave_heap_frame *o = xcalloc(1, sizeof(struct rsave_heap_frame) + page->nr_vars * sizeof(int32_t));
-	o->ref = ref;
+	o->ref = heap[slot].ref;
+	o->seq = heap[slot].seq;
 	struct ain_variable *vars;
 	if (page->type == GLOBAL_PAGE) {
 		o->tag = RSAVE_GLOBALS;
@@ -166,6 +171,7 @@ static struct rsave_heap_frame *frame_page_to_rsave(struct page *page, int ref)
 		o->func.name = strdup(f->name);
 		assert(page->nr_vars == f->nr_vars);
 		vars = f->vars;
+		o->struct_ptr = page->local.struct_ptr;
 	}
 	o->nr_types = page->nr_vars;
 	o->types = xcalloc(o->nr_types, sizeof(int32_t));
@@ -177,11 +183,12 @@ static struct rsave_heap_frame *frame_page_to_rsave(struct page *page, int ref)
 	return o;
 }
 
-static struct rsave_heap_struct *struct_page_to_rsave(struct page *page, int ref)
+static struct rsave_heap_struct *struct_page_to_rsave(struct page *page, int slot)
 {
 	struct rsave_heap_struct *o = xcalloc(1, sizeof(struct rsave_heap_struct) + page->nr_vars * sizeof(int32_t));
 	o->tag = RSAVE_STRUCT;
-	o->ref = ref;
+	o->ref = heap[slot].ref;
+	o->seq = heap[slot].seq;
 	struct ain_struct *s = &ain->structures[page->index];
 	o->ctor.name = strdup(s->constructor >= 0 ? ain->functions[s->constructor].name : "");
 	o->dtor.name = strdup(s->destructor >= 0 ? ain->functions[s->destructor].name : "");
@@ -197,11 +204,12 @@ static struct rsave_heap_struct *struct_page_to_rsave(struct page *page, int ref
 	return o;
 }
 
-static struct rsave_heap_array *array_page_to_rsave(struct page *page, int ref)
+static struct rsave_heap_array *array_page_to_rsave(struct page *page, int slot)
 {
 	struct rsave_heap_array *o = xcalloc(1, sizeof(struct rsave_heap_array) + page->nr_vars * sizeof(int32_t));
 	o->tag = RSAVE_ARRAY;
-	o->ref = ref;
+	o->ref = heap[slot].ref;
+	o->seq = heap[slot].seq;
 	o->rank_minus_1 = page->array.rank - 1;
 	o->data_type = page->index;
 	if (page->array.struct_type >= 0)
@@ -210,6 +218,18 @@ static struct rsave_heap_array *array_page_to_rsave(struct page *page, int ref)
 		o->struct_type.name = strdup("");
 	o->root_rank = page->array.rank;  // FIXME: this is incorrect for subarrays
 	o->is_not_empty = page->nr_vars ? 1 : 0;
+	o->nr_slots = page->nr_vars;
+	for (int i = 0; i < o->nr_slots; i++)
+		o->slots[i] = page->values[i].i;
+	return o;
+}
+
+static struct rsave_heap_delegate *delegate_page_to_rsave(struct page *page, int slot)
+{
+	struct rsave_heap_delegate *o = xcalloc(1, sizeof(struct rsave_heap_delegate) + page->nr_vars * sizeof(int32_t));
+	o->tag = RSAVE_DELEGATE;
+	o->ref = heap[slot].ref;
+	o->seq = heap[slot].seq;
 	o->nr_slots = page->nr_vars;
 	for (int i = 0; i < o->nr_slots; i++)
 		o->slots[i] = page->values[i].i;
@@ -225,6 +245,7 @@ static void *heap_item_to_rsave(int i)
 		struct rsave_heap_string *s = xmalloc(sizeof(struct rsave_heap_string) + len);
 		s->tag = RSAVE_STRING;
 		s->ref = heap[i].ref;
+		s->seq = heap[i].seq;
 		s->uk = 0;
 		s->len = len;
 		memcpy(s->text, heap[i].s->text, len);
@@ -236,6 +257,7 @@ static void *heap_item_to_rsave(int i)
 		struct rsave_heap_array *o = xcalloc(1, sizeof(struct rsave_heap_array));
 		o->tag = RSAVE_ARRAY;
 		o->ref = heap[i].ref;
+		o->seq = heap[i].seq;
 		o->rank_minus_1 = -1;
 
 		// FIXME: System40.exe populates them but we don't have the type
@@ -251,11 +273,13 @@ static void *heap_item_to_rsave(int i)
 	switch (page->type) {
 	case GLOBAL_PAGE:
 	case LOCAL_PAGE:
-		return frame_page_to_rsave(page, heap[i].ref);
+		return frame_page_to_rsave(page, i);
 	case STRUCT_PAGE:
-		return struct_page_to_rsave(page, heap[i].ref);
+		return struct_page_to_rsave(page, i);
 	case ARRAY_PAGE:
-		return array_page_to_rsave(page, heap[i].ref);
+		return array_page_to_rsave(page, i);
+	case DELEGATE_PAGE:
+		return delegate_page_to_rsave(page, i);
 	default:
 		ERROR("unsupported type %d", page->type);
 	}
@@ -330,9 +354,13 @@ static void save_func_names_to_rsave(struct rsave *rs)
 static struct rsave *make_rsave(const char *key)
 {
 	struct rsave *save = xcalloc(1, sizeof(struct rsave));
-	// FIXME: This is not always correct. RSM version cannot be determined from
-	// the ain version alone.
-	save->version = ain->version <= 4 ? 6 : 7;
+	if (ain->nr_delegates > 0) {
+		save->version = 9;
+	} else {
+		// FIXME: This is not always correct. Pastel Chime Continue is AIN v4
+		//        but uses RSM v7.
+		save->version = ain->version <= 4 ? 6 : 7;
+	}
 	save->key = strdup(key);
 	return save;
 }
@@ -340,6 +368,7 @@ static struct rsave *make_rsave(const char *key)
 static struct rsave *vm_image_to_rsave(const char *key)
 {
 	struct rsave *save = make_rsave(key);
+	save->next_seq = heap_next_seq;
 	save_heap_to_rsave(save);
 	save_call_stack_to_rsave(save);
 	save_stack_to_rsave(save);
@@ -476,6 +505,7 @@ static void delete_heap(void)
 			break;
 		}
 		heap[i].ref = 0;
+		heap[i].seq = 0;
 	}
 
 	heap_free_ptr = 0;
@@ -500,41 +530,31 @@ static void alloc_heap_slot(int slot)
 	heap_free_ptr++;
 }
 
-struct delegate_list {
-	int *slots;
-	int n;
-};
-
-void delegate_list_add(struct delegate_list *list, int slot)
-{
-	list->slots = xrealloc_array(list->slots, list->n, list->n+1, sizeof(int));
-	list->slots[list->n++] = slot;
-}
-
 static void load_json_heap(cJSON *json)
 {
-	struct delegate_list delegates = {0};
 	delete_heap();
 
 	cJSON *item;
 	cJSON_ArrayForEach(item, json) {
 		type_check(cJSON_Array, item);
-		if (cJSON_GetArraySize(item) != 3)
+		if (cJSON_GetArraySize(item) < 3)
 			invalid_save_data("Invalid heap data");
 
 		int slot = type_check(cJSON_Number, cJSON_GetArrayItem(item, 0))->valueint;
 		int ref  = type_check(cJSON_Number, cJSON_GetArrayItem(item, 1))->valueint;
 		cJSON *value = cJSON_GetArrayItem(item, 2);
+		int seq = ain->nr_delegates > 0
+			? type_check(cJSON_Number, cJSON_GetArrayItem(item, 3))->valueint
+			: slot;
 
 		alloc_heap_slot(slot);
 		heap[slot].ref = ref;
+		heap[slot].seq = seq;
 
 		if (cJSON_IsString(value)) {
 			load_json_string(slot, value);
 		} else if (cJSON_IsObject(value)) {
 			load_json_page(slot, value);
-			if (heap[slot].page->type == DELEGATE_PAGE)
-				delegate_list_add(&delegates, slot);
 		} else if (cJSON_IsNull(value)) {
 			heap[slot].type = VM_PAGE;
 			heap[slot].page = NULL;
@@ -542,13 +562,6 @@ static void load_json_heap(cJSON *json)
 			invalid_save_data("Invalid heap data");
 		}
 	}
-
-	for (int i = 0; i < delegates.n; i++) {
-		int slot = delegates.slots[i];
-		struct page *page = heap_get_delegate_page(slot);
-		vm_register_delegate_structs(page, slot);
-	}
-	free(delegates.slots);
 }
 
 static int resolve_func_symbol(struct rsave_symbol *sym)
@@ -579,6 +592,7 @@ static void load_rsave_frame(int slot, struct rsave_heap_frame *f)
 		page = alloc_page(LOCAL_PAGE, func, f->nr_slots);
 		nr_vars = ain->functions[func].nr_vars;
 		vars = ain->functions[func].vars;
+		page->local.struct_ptr = f->struct_ptr;
 	}
 
 	// type check
@@ -599,6 +613,7 @@ static void load_rsave_frame(int slot, struct rsave_heap_frame *f)
 	}
 	alloc_heap_slot(slot);
 	heap[slot].ref = f->ref;
+	heap[slot].seq = f->seq;
 	heap[slot].type = VM_PAGE;
 	heap[slot].page = page;
 }
@@ -607,6 +622,7 @@ static void load_rsave_string(int slot, struct rsave_heap_string *s)
 {
 	alloc_heap_slot(slot);
 	heap[slot].ref = s->ref;
+	heap[slot].seq = s->seq;
 	heap[slot].type = VM_STRING;
 	heap[slot].s = make_string(s->text, s->len - 1);
 }
@@ -616,6 +632,7 @@ static void load_rsave_array(int slot, struct rsave_heap_array *a)
 	if (a->rank_minus_1 < 0) {
 		alloc_heap_slot(slot);
 		heap[slot].ref = a->ref;
+		heap[slot].seq = a->seq;
 		heap[slot].type = VM_PAGE;
 		heap[slot].page = NULL;
 		return;
@@ -628,6 +645,7 @@ static void load_rsave_array(int slot, struct rsave_heap_array *a)
 
 	alloc_heap_slot(slot);
 	heap[slot].ref = a->ref;
+	heap[slot].seq = a->seq;
 	heap[slot].type = VM_PAGE;
 	heap[slot].page = page;
 }
@@ -636,8 +654,6 @@ static void load_rsave_struct(int slot, struct rsave_heap_struct *s)
 {
 	int struct_index = resolve_struct_symbol(&s->struct_type);
 	struct page *page = alloc_page(STRUCT_PAGE, struct_index, s->nr_slots);
-	page->struc.delegates = NULL;
-	page->struc.nr_delegates = 0;
 
 	// type check
 	struct ain_struct *as = &ain->structures[struct_index];
@@ -660,6 +676,20 @@ static void load_rsave_struct(int slot, struct rsave_heap_struct *s)
 
 	alloc_heap_slot(slot);
 	heap[slot].ref = s->ref;
+	heap[slot].seq = s->seq;
+	heap[slot].type = VM_PAGE;
+	heap[slot].page = page;
+}
+
+static void load_rsave_delegate(int slot, struct rsave_heap_delegate *d)
+{
+	struct page *page = alloc_page(DELEGATE_PAGE, 0, d->nr_slots);
+	for (int i = 0; i < d->nr_slots; i++)
+		page->values[i].i = d->slots[i];
+
+	alloc_heap_slot(slot);
+	heap[slot].ref = d->ref;
+	heap[slot].seq = d->seq;
 	heap[slot].type = VM_PAGE;
 	heap[slot].page = page;
 }
@@ -672,13 +702,15 @@ static void load_rsave_heap(struct rsave *save)
 		enum rsave_heap_tag *tag = save->heap[slot];
 		switch (*tag) {
 		case RSAVE_GLOBALS:
-		case RSAVE_LOCALS: load_rsave_frame(slot, save->heap[slot]);  break;
-		case RSAVE_STRING: load_rsave_string(slot, save->heap[slot]); break;
-		case RSAVE_ARRAY:  load_rsave_array(slot, save->heap[slot]);  break;
-		case RSAVE_STRUCT: load_rsave_struct(slot, save->heap[slot]); break;
+		case RSAVE_LOCALS:   load_rsave_frame(slot, save->heap[slot]);    break;
+		case RSAVE_STRING:   load_rsave_string(slot, save->heap[slot]);   break;
+		case RSAVE_ARRAY:    load_rsave_array(slot, save->heap[slot]);    break;
+		case RSAVE_STRUCT:   load_rsave_struct(slot, save->heap[slot]);   break;
+		case RSAVE_DELEGATE: load_rsave_delegate(slot, save->heap[slot]); break;
 		case RSAVE_NULL: break;
 		}
 	}
+	heap_next_seq = save->next_seq;
 }
 
 static void load_json_call_stack(cJSON *json)
@@ -687,13 +719,11 @@ static void load_json_call_stack(cJSON *json)
 	cJSON *item;
 	cJSON_ArrayForEach(item, json) {
 		type_check(cJSON_Object, item);
-		cJSON *delegate = cJSON_GetObjectItem(item, "delegate");
 		call_stack[call_stack_ptr++] = (struct function_call) {
 			.fno            = type_check(cJSON_Number, cJSON_GetObjectItem(item, "function"))->valueint,
 			.return_address = type_check(cJSON_Number, cJSON_GetObjectItem(item, "return-address"))->valueint,
 			.page_slot      = type_check(cJSON_Number, cJSON_GetObjectItem(item, "local-page"))->valueint,
 			.struct_page    = type_check(cJSON_Number, cJSON_GetObjectItem(item, "struct-page"))->valueint,
-			.delegate       = delegate ? type_check(cJSON_Number, delegate)->valueint : -1
 		};
 	}
 }
@@ -723,7 +753,6 @@ static void load_rsave_call_stack(struct rsave *save)
 				.return_address = return_address,
 				.page_slot      = save->call_frames[i].local_ptr,
 				.struct_page    = save->call_frames[i].struct_ptr,
-				.delegate       = -1,
 			};
 			// Calculate return address from the function address and offset
 			// to make it robust to ain changes.
@@ -793,6 +822,12 @@ static void load_json_image(const char *key, const char *path)
 	load_json_call_stack(type_check(cJSON_Array, cJSON_GetObjectItem(save, "call-stack")));
 	load_json_stack(type_check(cJSON_Array, cJSON_GetObjectItem(save, "stack")));
 	instr_ptr = ip->valueint;
+	if (ain->nr_delegates > 0) {
+		cJSON *next_seq = type_check(cJSON_Number, cJSON_GetObjectItem(save, "next_seq"));
+		heap_next_seq = next_seq->valueint;
+	} else {
+		heap_next_seq = heap_size;
+	}
 	cJSON_Delete(save);
 }
 

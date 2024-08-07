@@ -27,6 +27,15 @@
 
 #include "parts_internal.h"
 
+#ifndef M_PI
+#define M_PI (3.14159265358979323846)
+#endif
+
+static inline float deg2rad(float deg)
+{
+	return deg * (M_PI / 180.0);
+}
+
 // Goat sprites are integrated into the scene via a single (virtual) sprite
 static struct sprite goat_sprite;
 
@@ -87,7 +96,7 @@ static void parts_render_cg(struct parts *parts, struct parts_common *common)
 	// FIXME: need perspective for 3D rotate
 	//glm_rotate_x(mw_transform, parts->rotation.x, mw_transform);
 	//glm_rotate_y(mw_transform, parts->rotation.y, mw_transform);
-	glm_rotate_z(mw_transform, parts->local.rotation.z, mw_transform);
+	glm_rotate_z(mw_transform, parts->local.rotation.z * (M_PI/180.0), mw_transform);
 	glm_scale(mw_transform, (vec3){ parts->global.scale.x, parts->global.scale.y, 1.0 });
 	glm_translate(mw_transform, (vec3){ common->origin_offset.x, common->origin_offset.y, 0 });
 	glm_scale(mw_transform, (vec3){ common->w, common->h, 1.0 });
@@ -185,6 +194,21 @@ static void parts_render_flash(struct parts *parts, struct parts_flash *f)
 			WARNING("character %d is not defined", obj->character_id);
 			continue;
 		}
+		// set blend mode
+		switch (obj->blend_mode) {
+		case PARTS_FLASH_BLEND_MULTIPLY:
+			glBlendFuncSeparate(GL_DST_COLOR, GL_ZERO, GL_ZERO, GL_ONE);
+			break;
+		case PARTS_FLASH_BLEND_SCREEN:
+			glBlendFuncSeparate(GL_ONE, GL_ONE_MINUS_SRC_COLOR, GL_ZERO, GL_ONE);
+			break;
+		case PARTS_FLASH_BLEND_ADD:
+			glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE, GL_ZERO, GL_ONE);
+			break;
+		default:
+			break;
+		}
+		// render object
 		switch (tag->type) {
 		case TAG_DEFINE_SHAPE:
 			parts_render_flash_shape(parts, f, obj, (struct swf_tag_define_shape*)tag);
@@ -195,6 +219,7 @@ static void parts_render_flash(struct parts *parts, struct parts_flash *f)
 		default:
 			ERROR("unknown tag %d", tag->type);
 		}
+		glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ZERO);
 	}
 }
 
@@ -253,14 +278,35 @@ void parts_engine_render(possibly_unused struct sprite *_)
 	}
 }
 
+static bool pe_dirty = false;
+
+void parts_render_update(int passed_time)
+{
+	// XXX: hack for Rance 01 load issue
+	//      There is a bug in Rance 01 where a single bad frame is displayed after
+	//      loading a save. When this happens, the game passes a negative time delta
+	//      to PE_Update. We fix this issue by ignoring such calls.
+	if (passed_time < 0)
+		return;
+	if (pe_dirty) {
+		scene_sprite_dirty(&goat_sprite);
+		pe_dirty = false;
+	}
+}
+
 void parts_engine_dirty(void)
 {
-	scene_sprite_dirty(&goat_sprite);
+	pe_dirty = true;
+}
+
+void parts_engine_clean(void)
+{
+	pe_dirty = false;
 }
 
 void parts_dirty(possibly_unused struct parts *parts)
 {
-	parts_engine_dirty();
+	pe_dirty = true;
 }
 
 void parts_render_init(void)

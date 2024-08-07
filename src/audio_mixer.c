@@ -573,6 +573,11 @@ int channel_get_time_length(struct channel *ch)
 	return muldiv(ch->info.frames, 1000, ch->info.samplerate);
 }
 
+int channel_get_data_no(struct channel *ch)
+{
+	return ch->dfile ? ch->dfile->no : -1;
+}
+
 static sf_count_t channel_vio_get_filelen(void *data)
 {
 	return ((struct channel*)data)->dfile->size;
@@ -724,6 +729,7 @@ void mixer_init(void)
 		mixers[0].name = strdup("Music");
 		mixers[1].name = strdup("Sound");
 		mixers[2].name = strdup("Master");
+		master = &mixers[2];
 	} else {
 		// NOTE: Older games don't have an explicit master channel.
 		//       We add an extra mixer in this case for consistency.

@@ -73,7 +73,81 @@ struct traced_library {
 	bool (*should_trace)(struct ain_hll_function *f, union vm_value **args);
 };
 
+static bool chipmunk_should_trace(struct ain_hll_function *f, union vm_value **args)
+{
+	const char *no_trace[] = {
+		"SYSTEM_SetReadMessageSkipping",
+		"Update",
+		"KeepPreviousView",
+		"Sleep",
+	};
+	for (unsigned i = 0; i < sizeof(no_trace) / sizeof(*no_trace); i++) {
+		if (!strcmp(f->name, no_trace[i]))
+			return false;
+	}
+	return true;
+}
+
 #include "parts.h"
+#include "parts/parts_internal.h"
+static bool gui_engine_should_trace(struct ain_hll_function *f, union vm_value **args)
+{
+	const char *no_trace[] = {
+		"Parts_UpdateMotionTime",
+		"UpdateInputState",
+		"UpdateComponent",
+		"UpdateParts",
+		"GetMessageType",
+		"ReleaseMessage",
+		"Parts_SetPartsPixelDecide",
+		"Parts_GetPartsShow",
+		"Parts_IsCursorIn",
+		"Parts_GetPartsAlpha",
+	};
+	for (unsigned i = 0; i < sizeof(no_trace) / sizeof(*no_trace); i++) {
+		if (!strcmp(f->name, no_trace[i]))
+			return false;
+	}
+	if (!strcmp(f->name, "Parts_SetPartsCG")) {
+		static char *u = NULL;
+		if (!u)
+			u = utf2sjis("システム／ボタン／メニュー／通常", 0);
+		struct string ***strs = (void*)args;
+		struct string *s = *strs[1];
+		return strcmp(s->text, u);
+	}
+	if (!strcmp(f->name, "Parts_SetPos")) {
+		if (args[1]->i < 0 || args[2]->i < 0)
+			return false;
+		return PE_GetPartsX(args[0]->i) != args[1]->i || PE_GetPartsY(args[0]->i) != args[2]->i;
+	}
+	if (!strcmp(f->name, "Parts_SetZ"))
+		return PE_GetPartsZ(args[0]->i) != args[1]->i;
+	if (!strcmp(f->name, "Parts_SetShow"))
+		return PE_GetPartsShow(args[0]->i) != args[1]->i;
+	if (!strcmp(f->name, "Parts_SetAlpha"))
+		return PE_GetPartsAlpha(args[0]->i) != args[1]->i;
+	if (!strcmp(f->name, "Parts_SetPartsCGSurfaceArea")) {
+		return false;
+		struct parts *p = parts_try_get(args[0]->i);
+		if (!p)
+			return true;
+		Rectangle *r = &p->states[args[5]->i].common.surface_area;
+		return args[1]->i != r->x || args[2]->i != r->y
+			|| args[3]->i != r->w || args[4]->i != r->h;
+	}
+	if (!strcmp(f->name, "Parts_SetAddColor")) {
+		struct parts *p = parts_try_get(args[0]->i);
+		if (!p)
+			return true;
+		SDL_Color *c = &p->local.add_color;
+		return args[1]->i != c->r || args[2]->i != c->g || args[3]->i != c->b;
+	}
+	if (!strcmp(f->name, "Parts_GetPartsX"))
+		return false;
+	return true;
+}
+
 static bool parts_engine_should_trace(struct ain_hll_function *f, union vm_value **args)
 {
 	if (!strcmp(f->name, "Update"))
@@ -106,9 +180,30 @@ static bool parts_engine_should_trace(struct ain_hll_function *f, union vm_value
 	return true;
 }
 
+static bool sact_should_trace(struct ain_hll_function *f, union vm_value **args)
+{
+	const char *no_trace[] = {
+		"Key_IsDown",
+		"Mouse_ClearWheel",
+		"Mouse_GetPos",
+		"Mouse_GetWheel",
+		"SP_GetWidth",
+		"SP_GetHeight",
+		"SP_ExistAlpha",
+		"Update",
+	};
+	for (unsigned i = 0; i < sizeof(no_trace) / sizeof(*no_trace); i++) {
+		if (!strcmp(f->name, no_trace[i]))
+			return false;
+	}
+	return true;
+}
+
 struct traced_library traced_libraries[] = {
-	{ "GUIEngine", NULL },
+	{ "ChipmunkSpriteEngine", chipmunk_should_trace },
+	{ "GUIEngine", gui_engine_should_trace },
 	{ "PartsEngine", parts_engine_should_trace },
+	{ "SACTDX", sact_should_trace },
 };
 
 static void print_hll_trace(struct ain_library *lib, struct ain_hll_function *f,
@@ -342,6 +437,7 @@ extern struct static_library lib_DrawDungeon14;
 extern struct static_library lib_DrawGraph;
 extern struct static_library lib_DrawMovie;
 extern struct static_library lib_DrawMovie2;
+extern struct static_library lib_DrawMovie3;
 extern struct static_library lib_DrawPluginManager;
 extern struct static_library lib_DrawSimpleText;
 extern struct static_library lib_File;
@@ -368,6 +464,7 @@ extern struct static_library lib_MonsterInfo;
 extern struct static_library lib_MsgLogManager;
 extern struct static_library lib_MsgLogViewer;
 extern struct static_library lib_MsgSkip;
+extern struct static_library lib_NewFont;
 extern struct static_library lib_OutputLog;
 extern struct static_library lib_PassRegister;
 extern struct static_library lib_PartsEngine;
@@ -378,6 +475,7 @@ extern struct static_library lib_ReignEngine;
 extern struct static_library lib_SACT2;
 extern struct static_library lib_SACTDX;
 extern struct static_library lib_SengokuRanceFont;
+extern struct static_library lib_Sound2ex;
 extern struct static_library lib_SoundFilePlayer;
 extern struct static_library lib_StoatSpriteEngine;
 extern struct static_library lib_StretchHelper;
@@ -442,6 +540,7 @@ static struct static_library *static_libraries[] = {
 	&lib_DrawGraph,
 	&lib_DrawMovie,
 	&lib_DrawMovie2,
+	&lib_DrawMovie3,
 	&lib_DrawPluginManager,
 	&lib_DrawSimpleText,
 	&lib_File,
@@ -468,6 +567,7 @@ static struct static_library *static_libraries[] = {
 	&lib_MsgLogManager,
 	&lib_MsgLogViewer,
 	&lib_MsgSkip,
+	&lib_NewFont,
 	&lib_OutputLog,
 	&lib_PassRegister,
 	&lib_PartsEngine,
@@ -478,6 +578,7 @@ static struct static_library *static_libraries[] = {
 	&lib_SACT2,
 	&lib_SACTDX,
 	&lib_SengokuRanceFont,
+	&lib_Sound2ex,
 	&lib_SoundFilePlayer,
 	&lib_StoatSpriteEngine,
 	&lib_StretchHelper,
