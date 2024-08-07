@@ -208,33 +208,51 @@ write('''\
 	{ NULL, HLL_SIG_UNSUPPORTED },
 };
 
-EMSCRIPTEN_KEEPALIVE  // prevents inlining
-void ffi_call(const enum hll_signature *cif, void *fun, union vm_value *r, void **args)
-{
-	switch (*cif) {
 ''')
 
 for sig in signatures:
-    writeln(f'\tcase HLL_SIG_{sig.upper()}:')
+    writeln(f'static union vm_value hllcall_{sig}(void *fun, void **args)')
+    writeln('{')
     return_type, argtypes = sig[0], sig[1:]
     match return_type:
         case 'v':
-            write(f'\t\t')
+            write(f'\t')
         case 'i':
-            write(f'\t\tr->i = ')
+            write(f'\treturn (union vm_value){{ .i = ')
         case 'f':
-            write(f'\t\tr->f = ')
+            write(f'\treturn (union vm_value){{ .f = ')
         case 'p':
-            write(f'\t\tr->ref = ')
+            write(f'\treturn (union vm_value){{ .ref = ')
         case _:
             raise ValueError(f'unknown return type {return_type}')
     args = ", ".join(argexpr(i, t) for i, t in enumerate(argtypes))
-    writeln(f'(({functype(sig)})fun)({args});')
-    writeln(f'\t\tbreak;')
+    write(f'(({functype(sig)})fun)({args})')
+    if return_type == 'v':
+        writeln(';')
+        writeln('\treturn (union vm_value){};')
+    else:
+        writeln(' };')
+    writeln('}')
+    writeln('')
 
 write('''\
-	case HLL_SIG_UNSUPPORTED:
-		ERROR("unsupported HLL signature");
-	}
+static union vm_value hllcall_unsupported(void *fun, void **args)
+{
+	ERROR("unsupported HLL signature");
+}
+
+typedef union vm_value (*hllcall_func)(void *fun, void **args);
+
+static const hllcall_func hllcall_table[] = {
+''')
+for sig in signatures:
+    writeln(f'\thllcall_{sig},')
+write('''\
+	hllcall_unsupported
+};
+
+static void ffi_call(const enum hll_signature *cif, void *fun, union vm_value *r, void **args)
+{
+	*r = hllcall_table[*cif](fun, args);
 }
 ''')
