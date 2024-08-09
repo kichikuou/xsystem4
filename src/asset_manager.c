@@ -78,7 +78,7 @@ struct asset_manager_ald {
 
 struct asset_manager_afa {
 	struct asset_manager manager;
-	struct afa_archive *archives[MAX_ARCHIVES];
+	struct archive *archives[MAX_ARCHIVES];
 };
 
 static struct asset_manager *assets[ASSET_TYPE_MAX] = {0};
@@ -186,10 +186,18 @@ static bool afa_load_archive(struct asset_manager *_manager, const char *name)
 	snprintf(path, PATH_MAX, "%s.afa", name);
 
 	int error;
-	struct afa_archive *ar = afa_open(path, MMAP_IF_64BIT, &error);
+#ifdef __EMSCRIPTEN__
+	struct archive *ar = afa_open_emscripten(path, &error);
+#else
+	struct archive *ar = &afa_open(path, MMAP_IF_64BIT, &error)->ar;
+#endif
 	if (!ar) {
 		snprintf(path, PATH_MAX, "%s.AFA", name);
-		ar = afa_open(path, MMAP_IF_64BIT, &error);
+#ifdef __EMSCRIPTEN__
+		struct archive *ar = afa_open_emscripten(path, &error);
+#else
+		struct archive *ar = &afa_open(path, MMAP_IF_64BIT, &error)->ar;
+#endif
 		if (!ar) {
 			WARNING("Failed to open archive: %s", display_utf0(path));
 			return false;
@@ -207,7 +215,7 @@ static bool afa_exists_by_id(struct asset_manager *_manager, int id)
 {
 	struct asset_manager_afa *manager = (struct asset_manager_afa*)_manager;
 	for (int i = 0; i < MAX_ARCHIVES && manager->archives[i]; i++) {
-		if (archive_exists(&manager->archives[i]->ar, id - 1))
+		if (archive_exists(manager->archives[i], id - 1))
 			return true;
 	}
 	return false;
@@ -217,7 +225,7 @@ static struct archive_data *afa_get_by_id(struct asset_manager *_manager, int id
 {
 	struct asset_manager_afa *manager = (struct asset_manager_afa*)_manager;
 	for (int i = 0; i < MAX_ARCHIVES && manager->archives[i]; i++) {
-		struct archive_data *data = archive_get(&manager->archives[i]->ar, id - 1);
+		struct archive_data *data = archive_get(manager->archives[i], id - 1);
 		if (data)
 			return data;
 	}
@@ -231,7 +239,7 @@ static struct archive_data *afa_get_by_name(struct asset_manager *_manager, cons
 
 	for (unsigned i = 0; i < MAX_ARCHIVES && manager->archives[i]; i++) {
 		struct archive_data *data;
-		data = archive_get_by_basename(&manager->archives[i]->ar, name);
+		data = archive_get_by_basename(manager->archives[i], name);
 		if (data) {
 			if (id_out)
 				*id_out = data->no + 1;
@@ -246,7 +254,7 @@ static bool afa_exists_by_name(struct asset_manager *_manager, const char *name,
 	struct asset_manager_afa *manager = (struct asset_manager_afa*)_manager;
 
 	for (unsigned i = 0; i < MAX_ARCHIVES && manager->archives[i]; i++) {
-		if (archive_exists_by_basename(&manager->archives[i]->ar, name, id_out)) {
+		if (archive_exists_by_basename(manager->archives[i], name, id_out)) {
 			if (id_out)
 				*id_out += 1;
 			return true;
@@ -298,7 +306,11 @@ static void afa_init(enum asset_type type, char *file)
 		WARNING("Multiple asset archives for type %s", asset_strtype(type));
 
 	int error;
-	struct afa_archive *ar = afa_open(file, MMAP_IF_64BIT, &error);
+#ifdef __EMSCRIPTEN__
+	struct archive *ar = afa_open_emscripten(file, &error);
+#else
+	struct archive *ar = &afa_open(file, MMAP_IF_64BIT, &error)->ar;
+#endif
 	if (!ar)
 		ERROR("Failed to open AFA file: %s", archive_strerror(error));
 

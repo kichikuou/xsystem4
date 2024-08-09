@@ -24,7 +24,10 @@
 enum asset_type;
 
 struct archive *ald_open_emscripten(enum asset_type type, int *error);
-struct archive *dlf_open_emscripten(const char *path, int *error);
+struct archive *archive_open_emscripten(const char *path, int *error);
 struct archive *aar_open_emscripten(const char *path, int *error);
+
+#define afa_open_emscripten archive_open_emscripten
+#define dlf_open_emscripten archive_open_emscripten
 
 #endif /* SYSTEM4_ARCHIVE_EMSCRIPTEN_H */
