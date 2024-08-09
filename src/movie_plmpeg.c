@@ -184,20 +184,6 @@ static void update_texture(GLuint unit, GLuint texture, plm_plane_t *plane)
 	             GL_RED, GL_UNSIGNED_BYTE, plane->data);
 }
 
-#ifdef __EMSCRIPTEN__
-
-EM_ASYNC_JS(void*, load_nonresident_file, (const char *path, size_t *len), {
-	const data = await Module.shell.load_nonresident_file(UTF8ToString(path));
-	if (!data)
-		return 0;
-	const ptr = Module._malloc(data.byteLength);
-	Module.HEAPU8.set(data, ptr);
-	Module.HEAPU32[len >> 2] = data.byteLength;
-	return ptr;
-});
-
-#endif
-
 struct movie_context *movie_load(const char *filename)
 {
 	struct movie_context *mc = xcalloc(1, sizeof(struct movie_context));
