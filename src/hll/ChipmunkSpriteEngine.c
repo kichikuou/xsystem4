@@ -163,8 +163,8 @@ static bool ChipmunkSpriteEngine_SP_GetSurfaceArea(int sp_no, int *x, int *y, in
 	return true;
 }
 
-//static bool ChipmunkSpriteEngine_SP_SetSpriteTransformMode(int sp_no, int transform_mode);
-//static bool ChipmunkSpriteEngine_SP_SetSpriteTransformPos(int sp_no, float x0, float y0, float z0, float w0, float u0, float v0, float x1, float y1, float z1, float w1, float u1, float v1, float x2, float y2, float z2, float w2, float u2, float v2, float x3, float y3, float z3, float w3, float u3, float v3);
+HLL_WARN_UNIMPLEMENTED(false, bool, ChipmunkSpriteEngine, SP_SetSpriteTransformMode, int sp_no, int transform_mode);
+HLL_WARN_UNIMPLEMENTED(false, bool, ChipmunkSpriteEngine, SP_SetSpriteTransformPos, int sp_no, float x0, float y0, float z0, float w0, float u0, float v0, float x1, float y1, float z1, float w1, float u1, float v1, float x2, float y2, float z2, float w2, float u2, float v2, float x3, float y3, float z3, float w3, float u3, float v3);
 //static bool ChipmunkSpriteEngine_Sprite_SetTextureFilerType(int sp_no, int texture_filter_type);
 //static int ChipmunkSpriteEngine_Sprite_GetTextureFilterType(int sp_no);
 
@@ -237,8 +237,8 @@ HLL_LIBRARY(ChipmunkSpriteEngine,
 	    HLL_EXPORT(SP_SetDrawMethod, sact_SP_SetDrawMethod),
 	    HLL_EXPORT(SP_SetSurfaceArea, ChipmunkSpriteEngine_SP_SetSurfaceArea),
 	    HLL_EXPORT(SP_GetSurfaceArea, ChipmunkSpriteEngine_SP_GetSurfaceArea),
-	    HLL_TODO_EXPORT(SP_SetSpriteTransformMode, ChipmunkSpriteEngine_SP_SetSpriteTransformMode),
-	    HLL_TODO_EXPORT(SP_SetSpriteTransformPos, ChipmunkSpriteEngine_SP_SetSpriteTransformPos),
+	    HLL_EXPORT(SP_SetSpriteTransformMode, ChipmunkSpriteEngine_SP_SetSpriteTransformMode),
+	    HLL_EXPORT(SP_SetSpriteTransformPos, ChipmunkSpriteEngine_SP_SetSpriteTransformPos),
 	    HLL_TODO_EXPORT(Sprite_SetTextureFilerType, ChipmunkSpriteEngine_Sprite_SetTextureFilerType),
 	    HLL_TODO_EXPORT(Sprite_GetTextureFilterType, ChipmunkSpriteEngine_Sprite_GetTextureFilterType),
 	    HLL_EXPORT(SP_IsUsing, sact_SP_IsUsing),
