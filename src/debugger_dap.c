@@ -105,11 +105,28 @@ static void emit_terminated_event(void)
 	emit_event("terminated", NULL);
 }
 
-static void emit_stopped_event(void)
+static void emit_stopped_event(struct dbg_stop *stop)
 {
 	cJSON *body = cJSON_CreateObject();
-	// TODO: specify correct reason
-	cJSON_AddStringToObject(body, "reason", "pause");
+	switch (stop->type) {
+	case DBG_STOP_PAUSE:
+		cJSON_AddStringToObject(body, "reason", "pause");
+		cJSON_AddStringToObject(body, "description", "Paused by user");
+		break;
+	case DBG_STOP_ERROR:
+		cJSON_AddStringToObject(body, "reason", "exception");
+		cJSON_AddStringToObject(body, "description", "Paused on error");
+		break;
+	case DBG_STOP_BREAKPOINT:
+		cJSON_AddStringToObject(body, "reason", "breakpoint");
+		cJSON_AddStringToObject(body, "description", "Paused on breakpoint");
+		break;
+	case DBG_STOP_STEP:
+		cJSON_AddStringToObject(body, "reason", "step");
+		cJSON_AddStringToObject(body, "description", "Paused by step action");
+	}
+	if (stop->message)
+		cJSON_AddStringToObject(body, "text", stop->message);
 	emit_event("stopped", body);
 }
 
@@ -551,7 +568,7 @@ static void cmd_pause(cJSON *args, cJSON *resp)
 	send_json(resp);
 
 	if (dap_state != DAP_STOPPED) {
-		dbg_repl();
+		dbg_repl(DBG_STOP_PAUSE, NULL);
 	}
 }
 
@@ -692,6 +709,14 @@ static struct parts *get_parts(cJSON *args, int *id_out)
 	return parts;
 }
 
+static void draw_rectangle(Texture *t, Color c, Rectangle r)
+{
+	gfx_draw_line(t, r.x, r.y, r.x + r.w, r.y, c.r, c.g, c.b);
+	gfx_draw_line(t, r.x, r.y + r.h, r.x + r.w, r.y + r.h, c.r, c.g, c.b);
+	gfx_draw_line(t, r.x, r.y, r.x, r.y + r.h, c.r, c.g, c.b);
+	gfx_draw_line(t, r.x + r.w, r.y, r.x + r.w, r.y + r.h, c.r, c.g, c.b);
+}
+
 // render a parts object
 static void cmd_xsystem4_renderParts(cJSON *args, cJSON *resp)
 {
@@ -712,6 +737,22 @@ static void cmd_xsystem4_renderParts(cJSON *args, cJSON *resp)
 	GLuint fbo = gfx_set_framebuffer(GL_FRAMEBUFFER, &t, 0, 0, t.w, t.h);
 	parts_render_family(parts);
 	gfx_reset_framebuffer(GL_FRAMEBUFFER, fbo);
+
+	struct parts_common *state = &parts->states[parts->state].common;
+	// draw bounds
+	draw_rectangle(&t, (Color){255,0,0}, (Rectangle) {
+		parts->global.pos.x + state->origin_offset.x,
+		parts->global.pos.y + state->origin_offset.y,
+		state->w,
+		state->h
+	});
+	// draw origin
+	draw_rectangle(&t, (Color){0,255,0}, (Rectangle) {
+		parts->global.pos.x - 1,
+		parts->global.pos.y - 1,
+		3,
+		3
+	});
 
 	// send response
 	cJSON *body;
@@ -862,9 +903,9 @@ void dbg_dap_quit(void)
 	emit_terminated_event();
 }
 
-void dbg_dap_repl(void)
+void dbg_dap_repl(struct dbg_stop *stop)
 {
-	emit_stopped_event();
+	emit_stopped_event(stop);
 	dap_state = DAP_STOPPED;
 
 	bool continue_repl = true;

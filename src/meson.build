@@ -1,4 +1,4 @@
-version_h = vcs_tag(command : ['git', 'rev-parse', '--short', 'HEAD'],
+version_h = vcs_tag(command : ['git', 'describe', 'HEAD'],
                     fallback : 'unknown version',
                     input : 'version.h.in',
                     output : 'version.h')
@@ -199,9 +199,15 @@ if host_machine.system() == 'windows'
     static_link_args = ['-static', '-lstdc++']
 endif
 
+winsys = 'console'
+if get_option('buildtype').startswith('release')
+    winsys = 'windows'
+endif
+
 executable('xsystem4', xsystem4,
            dependencies : xsystem4_deps,
            c_args : ['-Wno-unused-parameter'],
            link_args : static_link_args,
            include_directories : incdir,
+           win_subsystem : winsys,
            install : true)

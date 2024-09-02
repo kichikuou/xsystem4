@@ -414,22 +414,10 @@ enum {
 #endif
 };
 
-#ifdef _WIN32
-static void windows_error_handler(const char *msg)
-{
-	sys_warning("%s", msg);
-	sys_warning("Press the enter key to exit...\n");
-	getchar();
-	sys_exit(1);
-}
-#endif
-
-#ifdef __ANDROID__
-static void android_error_handler(const char *msg)
+static void error_handler(const char *msg)
 {
 	SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "xsystem4", msg, NULL);
 }
-#endif
 
 #ifdef __EMSCRIPTEN__
 EM_JS(void, emscripten_error_handler, (const char *msg), {
@@ -439,14 +427,10 @@ EM_JS(void, emscripten_error_handler, (const char *msg), {
 
 int main(int argc, char *argv[])
 {
-#ifdef _WIN32
-	sys_error_handler = windows_error_handler;
-#endif
-#ifdef __ANDROID__
-	sys_error_handler = android_error_handler;
-#endif
 #ifdef __EMSCRIPTEN__
 	sys_error_handler = emscripten_error_handler;
+#else
+	sys_error_handler = error_handler;
 #endif
 
 	initialize_instructions();
