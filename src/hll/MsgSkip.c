@@ -57,12 +57,20 @@ static void msgskip_save(void)
 	fclose(f);
 }
 
-#ifdef __ANDROID__
+#if defined(__ANDROID__) || defined(__EMSCRIPTEN__)
 static int msgskip_event_handler(possibly_unused void *user_data, SDL_Event *e) {
 	switch (e->type) {
+#ifdef __ANDROID__
 	case SDL_APP_WILLENTERBACKGROUND:
 		msgskip_save();
 		break;
+#endif
+#ifdef __EMSCRIPTEN__
+	case SDL_WINDOWEVENT:
+		if (e->window.event == SDL_WINDOWEVENT_HIDDEN)
+			msgskip_save();
+		break;
+#endif
 	}
 	return 0;
 }
@@ -109,7 +117,7 @@ static int MsgSkip_Init(struct string *name)
 		}
 		free(data);
 	}
-#ifdef __ANDROID__
+#if defined(__ANDROID__) || defined(__EMSCRIPTEN__)
 	SDL_AddEventWatch(msgskip_event_handler, NULL);
 #endif
 	atexit(msgskip_save);
