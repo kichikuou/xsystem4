@@ -46,6 +46,11 @@ static struct hash_table *parts_table = NULL;
 
 static void parts_init(struct parts *parts)
 {
+	parts->sp.z = 1;
+	parts->sp.has_pixel = true;
+	parts->sp.has_alpha = true;
+	parts->sp.render = parts_sprite_render;
+	parts->sp.to_json = parts_sprite_to_json;
 	parts->local = PARTS_PARAMS_INITIALIZER;
 	parts->global = PARTS_PARAMS_INITIALIZER;
 	parts->delegate_index = -1;
@@ -92,11 +97,13 @@ static void parts_list_insert(struct parts *parts)
 	}
 	TAILQ_INSERT_TAIL(&parts_list, parts, parts_list_entry);
 	parts_engine_dirty();
+	scene_register_sprite(&parts->sp);
 }
 
 static void parts_list_remove(struct parts *parts)
 {
 	TAILQ_REMOVE(&parts_list, parts, parts_list_entry);
+	scene_unregister_sprite(&parts->sp);
 }
 
 void parts_list_resort(struct parts *parts)
@@ -104,6 +111,7 @@ void parts_list_resort(struct parts *parts)
 	// TODO: this could be optimized
 	parts_list_remove(parts);
 	parts_list_insert(parts);
+	scene_set_sprite_z(&parts->sp, parts->global.z);
 }
 
 struct parts *parts_try_get(int parts_no)
@@ -951,10 +959,10 @@ static void parts_combine_params(struct parts_params *parent, struct parts_param
 static void parts_update_component(struct parts *parts)
 {
 	if (parts->parent) {
-		int old_z = parts->global.z;
 		parts_combine_params(&parts->parent->global, &parts->local, &parts->global);
-		if (parts->global.z != old_z)
-			parts_list_resort(parts);
+	}
+	if (parts->global.z != parts->sp.z) {
+		parts_list_resort(parts);
 	}
 
 	if (parts->dirty) {
@@ -1076,7 +1084,10 @@ bool PE_SetPartsCG_by_string_index(int parts_no, struct string *cg_no,
 	}
 
 	struct parts_cg *cg = parts_get_cg(parts, state);
-	return parts_cg_set_by_index(parts, cg, atoi(cg_no->text));
+	if (!parts_cg_set_by_index(parts, cg, atoi(cg_no->text)))
+		return false;
+	cg->name = string_ref(cg_no);
+	return true;
 }
 
 void PE_GetPartsCGName(int parts_no, struct string **cg_name, int state)

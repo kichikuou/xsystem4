@@ -286,6 +286,28 @@ bool RE_plugin_unbind(struct RE_plugin *plugin)
 	return true;
 }
 
+bool RE_plugin_suspend(struct RE_plugin *plugin)
+{
+	if (!plugin)
+		return false;
+	plugin->suspended = true;
+	struct sact_sprite *sp = sact_try_get_sprite(plugin->sprite);
+	if (sp)
+		sprite_set_show(sp, false);
+	return true;
+}
+
+bool RE_plugin_resume(struct RE_plugin *plugin)
+{
+	if (!plugin)
+		return false;
+	plugin->suspended = false;
+	struct sact_sprite *sp = sact_try_get_sprite(plugin->sprite);
+	if (sp)
+		sprite_set_show(sp, true);
+	return true;
+}
+
 bool RE_build_model(struct RE_plugin *plugin, int elapsed_ms)
 {
 	if (!plugin)
@@ -534,6 +556,21 @@ float RE_instance_calc_height(struct RE_instance *instance, float x, float z)
 	if (RE_renderer_detect_height(instance->height_detector, x, z - 0.5f, &y)) { cnt++; total += y; }
 	if (RE_renderer_detect_height(instance->height_detector, x, z + 0.5f, &y)) { cnt++; total += y; }
 	return cnt ? total / cnt : 0.0f;
+}
+
+bool RE_instance_calc_2d_detection(struct RE_instance *instance, float x0, float y0, float z0, float x1, float y1, float z1, float *x2, float *y2, float *z2, float radius)
+{
+	if (!instance || !instance->model->collider)
+		return false;
+	vec3 p0 = { x0, y0, -z0 };
+	vec3 p1 = { x1, y1, -z1 };
+	vec3 p2;
+	if (!check_collision(instance->model->collider, p0, p1, radius, p2))
+		return false;
+	*x2 = p2[0];
+	*y2 = p2[1];
+	*z2 = -p2[2];
+	return true;
 }
 
 bool RE_instance_set_debug_draw_shadow_volume(struct RE_instance *inst, bool draw)
