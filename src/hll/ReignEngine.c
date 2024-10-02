@@ -1619,6 +1619,9 @@ static bool ReignEngine_SetGlobalAmbient(int plugin, float r, float g, float b)
 	struct RE_plugin *p = get_plugin(plugin);
 	if (!p)
 		return false;
+	// TapirEngine seems to disregard the global ambient.
+	if (p->version >= RE_TAPIR_PLUGIN)
+		return true;
 	p->global_ambient[0] = r;
 	p->global_ambient[1] = g;
 	p->global_ambient[2] = b;
