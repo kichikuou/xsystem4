@@ -80,6 +80,7 @@ static void unload_instance(struct RE_instance *instance)
 		instance->effect = NULL;
 	}
 	if (instance->bone_transforms) {
+		glDeleteBuffers(1, &instance->bone_transforms_ubo);
 		free(instance->bone_transforms);
 		instance->bone_transforms = NULL;
 	}
@@ -187,6 +188,9 @@ static void update_bones(struct RE_instance *inst)
 		glm_vec3_minv(aabb[0], bone_transform[3], aabb[0]);
 		glm_vec3_maxv(aabb[1], bone_transform[3], aabb[1]);
 	}
+	glBindBuffer(GL_UNIFORM_BUFFER, inst->bone_transforms_ubo);
+	glBufferSubData(GL_UNIFORM_BUFFER, 0, inst->model->nr_bones * sizeof(mat4), inst->bone_transforms);
+	glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
 	// Update inst->bounding_sphere.
 	vec3 center;
@@ -444,8 +448,13 @@ bool RE_instance_load(struct RE_instance *instance, const char *name)
 			if (instance->model)
 				ht_put(instance->plugin->model_cache, name, instance->model);
 		}
-		if (instance->model && instance->model->nr_bones > 0)
+		if (instance->model && instance->model->nr_bones > 0) {
 			instance->bone_transforms = xcalloc(instance->model->nr_bones, sizeof(mat4));
+			glGenBuffers(1, &instance->bone_transforms_ubo);
+			glBindBuffer(GL_UNIFORM_BUFFER, instance->bone_transforms_ubo);
+			glBufferData(GL_UNIFORM_BUFFER, MAX_BONES * sizeof(mat4), NULL, GL_DYNAMIC_DRAW);
+			glBindBuffer(GL_UNIFORM_BUFFER, 0);
+		}
 		return !!instance->model;
 	case RE_ITYPE_PARTICLE_EFFECT:
 		pae = ht_get(instance->plugin->pae_cache, name, NULL);
@@ -558,19 +567,29 @@ float RE_instance_calc_height(struct RE_instance *instance, float x, float z)
 	return cnt ? total / cnt : 0.0f;
 }
 
+float RE_instance_calc_2d_detection_height(struct RE_instance *instance, float x, float z)
+{
+	if (!instance || !instance->model->collider)
+		return false;
+	vec2 xz = { x, -z };
+	float h;
+	if (collider_height(instance->model->collider, xz, &h))
+		return h;
+	return 0.f;
+}
+
 bool RE_instance_calc_2d_detection(struct RE_instance *instance, float x0, float y0, float z0, float x1, float y1, float z1, float *x2, float *y2, float *z2, float radius)
 {
 	if (!instance || !instance->model->collider)
 		return false;
-	vec3 p0 = { x0, y0, -z0 };
-	vec3 p1 = { x1, y1, -z1 };
-	vec3 p2;
+	vec2 p0 = { x0, -z0 };
+	vec2 p1 = { x1, -z1 };
+	vec2 p2;
 	if (!check_collision(instance->model->collider, p0, p1, radius, p2))
 		return false;
 	*x2 = p2[0];
-	*y2 = p2[1];
-	*z2 = -p2[2];
-	return true;
+	*z2 = -p2[1];
+	return collider_height(instance->model->collider, p2, y2);
 }
 
 bool RE_instance_set_debug_draw_shadow_volume(struct RE_instance *inst, bool draw)

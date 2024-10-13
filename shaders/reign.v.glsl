@@ -30,10 +30,12 @@ uniform mat4 view_transform;
 uniform mat4 proj_transform;
 uniform mat3 normal_transform;
 
-const int MAX_BONES = 211;  // see 3d_internal.h
+const int MAX_BONES = 308;  // see 3d_internal.h
 const int NR_WEIGHTS = 4;
 uniform bool has_bones;
-uniform mat4 bone_matrices[MAX_BONES];
+layout(std140) uniform BoneTransforms {
+	mat4 bone_matrices[MAX_BONES];
+};
 
 uniform bool use_normal_map;
 
@@ -51,12 +53,14 @@ in vec3 vertex_pos;
 in vec3 vertex_normal;
 in vec2 vertex_uv;
 in vec2 vertex_light_uv;
+in vec3 vertex_color;
 in vec4 vertex_tangent;
 in ivec4 vertex_bone_index;
 in vec4 vertex_bone_weight;
 
 out vec2 tex_coord;
 out vec2 light_tex_coord;
+out vec3 color_mod;
 out vec3 frag_pos;
 out vec4 shadow_frag_pos;
 out float dist;
@@ -97,6 +101,7 @@ void main() {
 
 	tex_coord = vertex_uv;
 	light_tex_coord = vertex_light_uv;
+	color_mod = vertex_color;
 	dist = -view_pos.z;
 	shadow_frag_pos = shadow_transform * world_pos;
 

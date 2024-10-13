@@ -26,6 +26,8 @@
 #include "reign.h"
 #include "sact.h"
 
+#define BONE_TRANSFORMS_BINDING 0
+
 // TODO: Respect RE_plugin.shadow_map_resolution_level
 #define SHADOW_WIDTH 512
 #define SHADOW_HEIGHT 512
@@ -74,6 +76,7 @@ static GLuint load_shader(const char *vertex_shader_path, const char *fragment_s
 	glBindAttribLocation(program, VATTR_BONE_INDEX, "vertex_bone_index");
 	glBindAttribLocation(program, VATTR_BONE_WEIGHT, "vertex_bone_weight");
 	glBindAttribLocation(program, VATTR_LIGHT_UV, "vertex_light_uv");
+	glBindAttribLocation(program, VATTR_COLOR, "vertex_color");
 	glBindAttribLocation(program, VATTR_TANGENT, "vertex_tangent");
 
 	glLinkProgram(program);
@@ -99,7 +102,8 @@ static void init_shadow_renderer(struct shadow_renderer *sr)
 	sr->world_transform = glGetUniformLocation(sr->program, "world_transform");
 	sr->view_transform = glGetUniformLocation(sr->program, "view_transform");
 	sr->has_bones = glGetUniformLocation(sr->program, "has_bones");
-	sr->bone_matrices = glGetUniformLocation(sr->program, "bone_matrices");
+	GLuint bone_transforms = glGetUniformBlockIndex(sr->program, "BoneTransforms");
+	glUniformBlockBinding(sr->program, bone_transforms, BONE_TRANSFORMS_BINDING);
 
 	glGenFramebuffers(1, &sr->fbo);
 	glGenTextures(1, &sr->texture);
@@ -144,6 +148,8 @@ static void init_billboard_mesh(struct RE_renderer *r)
 	glVertexAttribPointer(VATTR_UV, 2, GL_FLOAT, GL_FALSE, 20, (const void *)12);
 	glDisableVertexAttribArray(VATTR_LIGHT_UV);
 	glVertexAttrib2f(VATTR_LIGHT_UV, 0.0, 0.0);
+	glDisableVertexAttribArray(VATTR_COLOR);
+	glVertexAttrib3f(VATTR_COLOR, 1.0, 1.0, 1.0);
 	glDisableVertexAttribArray(VATTR_NORMAL);
 	glVertexAttrib3f(VATTR_NORMAL, 0.0, 0.0, 1.0);
 	glDisableVertexAttribArray(VATTR_TANGENT);
@@ -178,7 +184,8 @@ struct RE_renderer *RE_renderer_new(void)
 	r->normal_transform = glGetUniformLocation(r->program, "normal_transform");
 	r->alpha_mod = glGetUniformLocation(r->program, "alpha_mod");
 	r->has_bones = glGetUniformLocation(r->program, "has_bones");
-	r->bone_matrices = glGetUniformLocation(r->program, "bone_matrices");
+	GLuint bone_transforms = glGetUniformBlockIndex(r->program, "BoneTransforms");
+	glUniformBlockBinding(r->program, bone_transforms, BONE_TRANSFORMS_BINDING);
 	r->ambient = glGetUniformLocation(r->program, "ambient");
 	for (int i = 0; i < NR_DIR_LIGHTS; i++) {
 		char buf[64];
@@ -420,7 +427,7 @@ static void render_skinned_model(struct RE_instance *inst, struct RE_renderer *r
 
 	if (model->nr_bones > 0 && inst->motion) {
 		glUniform1i(r->has_bones, GL_TRUE);
-		glUniformMatrix4fv(r->bone_matrices, model->nr_bones, GL_FALSE, inst->bone_transforms[0][0]);
+		glBindBufferBase(GL_UNIFORM_BUFFER, BONE_TRANSFORMS_BINDING, inst->bone_transforms_ubo);
 	} else {
 		glUniform1i(r->has_bones, GL_FALSE);
 	}
@@ -642,6 +649,26 @@ static void render_instance(struct RE_instance *inst, struct RE_renderer *r, mat
 	}
 }
 
+static void merge_spheres(vec4 s1, vec4 s2, vec4 dest)
+{
+	// glm_sphere_merge() doesn't make the smallest possible sphere, so do it manually.
+	float distance = glm_vec3_distance(s1, s2);
+	float r1 = s1[3];
+	float r2 = s2[3];
+	if (distance + r2 <= r1) {
+		glm_vec4_copy(s1, dest);
+	} else if (distance + r1 <= r2) {
+		glm_vec4_copy(s2, dest);
+	} else {
+		float radius = (distance + r1 + r2) / 2.f;
+		vec3 v12;
+		glm_vec3_sub(s2, s1, v12);
+		glm_vec3_copy(s1, dest);
+		glm_vec3_muladds(v12, (radius - r1) / distance, dest);
+		dest[3] = radius;
+	}
+}
+
 static bool calc_shadow_light_transform(struct RE_plugin *plugin, mat4 dest)
 {
 	// Compute a bounding sphere of shadow casters.
@@ -651,7 +678,7 @@ static bool calc_shadow_light_transform(struct RE_plugin *plugin, mat4 dest)
 		if (!inst || !inst->draw || !inst->make_shadow || !inst->model)
 			continue;
 		if (bounding_sphere[3] > 0.0f)
-			glm_sphere_merge(inst->bounding_sphere, bounding_sphere, inst->bounding_sphere);
+			merge_spheres(inst->bounding_sphere, bounding_sphere, bounding_sphere);
 		else
 			glm_vec4_copy(inst->bounding_sphere, bounding_sphere);
 	}
@@ -662,7 +689,7 @@ static bool calc_shadow_light_transform(struct RE_plugin *plugin, mat4 dest)
 
 	// Create a orthographic frustum that contains the bounding sphere.
 	mat4 view_matrix;
-	glm_look(bounding_sphere, plugin->shadow_map_light_dir, GLM_YUP, view_matrix);
+	glm_look_anyup(bounding_sphere, plugin->shadow_map_light_dir, view_matrix);
 	mat4 proj_matrix;
 	glm_ortho(-radius, radius, -radius, radius, -radius, radius, proj_matrix);
 	glm_mat4_mul(proj_matrix, view_matrix, dest);
@@ -698,7 +725,7 @@ static void render_shadow_map(struct RE_plugin *plugin, mat4 light_space_transfo
 		struct model *model = inst->model;
 		if (model->nr_bones > 0) {
 			glUniform1i(r->shadow.has_bones, GL_TRUE);
-			glUniformMatrix4fv(r->shadow.bone_matrices, model->nr_bones, GL_FALSE, inst->bone_transforms[0][0]);
+			glBindBufferBase(GL_UNIFORM_BUFFER, BONE_TRANSFORMS_BINDING, inst->bone_transforms_ubo);
 		} else {
 			glUniform1i(r->shadow.has_bones, GL_FALSE);
 		}
@@ -952,6 +979,14 @@ struct height_detector *RE_renderer_create_height_detector(struct RE_renderer *r
 	glUniformMatrix4fv(r->shadow.view_transform, 1, GL_FALSE, proj_matrix[0]);
 	glUniform1i(r->shadow.has_bones, GL_FALSE);
 
+	// Bone transforms are not used, but we still need to bind a UBO.
+	GLuint bone_transforms_ubo;
+	glGenBuffers(1, &bone_transforms_ubo);
+	glBindBuffer(GL_UNIFORM_BUFFER, bone_transforms_ubo);
+	glBufferData(GL_UNIFORM_BUFFER, MAX_BONES * sizeof(mat4), NULL, GL_STATIC_DRAW);
+	glBindBuffer(GL_UNIFORM_BUFFER, 0);
+	glBindBufferBase(GL_UNIFORM_BUFFER, BONE_TRANSFORMS_BINDING, bone_transforms_ubo);
+
 	glEnable(GL_DEPTH_TEST);
 
 	// Render the model.
@@ -973,6 +1008,7 @@ struct height_detector *RE_renderer_create_height_detector(struct RE_renderer *r
 	glBindFramebuffer(GL_FRAMEBUFFER, orig_fbo);
 	glViewport(orig_viewport[0], orig_viewport[1], orig_viewport[2], orig_viewport[3]);
 
+	glDeleteBuffers(1, &bone_transforms_ubo);
 	glDeleteTextures(1, &color_texture);
 	return hd;
 }

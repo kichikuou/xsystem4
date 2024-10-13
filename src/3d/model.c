@@ -40,6 +40,10 @@ struct vertex_light_uv {
 	GLfloat uv[2];
 };
 
+struct vertex_color {
+	GLfloat color[3];
+};
+
 struct vertex_tangent {
 	GLfloat tangent[4];
 };
@@ -103,8 +107,13 @@ static bool init_material(struct material *material, const struct pol_material *
 
 	if (m->textures[SPECULAR_MAP])
 		material->specular_map = load_texture(aar, path, m->textures[SPECULAR_MAP], NULL);
-	if (m->textures[ALPHA_MAP])
-		material->alpha_map = load_texture(aar, path, m->textures[ALPHA_MAP], NULL);
+	if (m->textures[ALPHA_MAP]) {
+		if (has_alpha && !strcmp(m->textures[COLOR_MAP], m->textures[ALPHA_MAP])) {
+			// Do nothing; the alpha channel of the color map is used.
+		} else {
+			material->alpha_map = load_texture(aar, path, m->textures[ALPHA_MAP], NULL);
+		}
+	}
 	if (m->textures[LIGHT_MAP])
 		material->light_map = load_texture(aar, path, m->textures[LIGHT_MAP], NULL);
 	if (m->textures[NORMAL_MAP])
@@ -217,12 +226,15 @@ static void *buf_alloc(uint8_t **ptr, int size)
 static void add_mesh(struct model *model, struct pol_mesh *m, uint32_t material_group_index, int material)
 {
 	bool has_light_map = m->light_uvs && model->materials[material].light_map;
+	bool has_vertex_colors = m->nr_colors > 0;
 	bool has_normal_map = model->materials[material].normal_map != 0;
 	bool has_bones = !!model->bone_map;
 
 	GLsizei stride = sizeof(struct vertex_common);
 	if (has_light_map)
 		stride += sizeof(struct vertex_light_uv);
+	if (has_vertex_colors)
+		stride += sizeof(struct vertex_color);
 	if (has_normal_map)
 		stride += sizeof(struct vertex_tangent);
 	if (has_bones)
@@ -248,6 +260,10 @@ static void add_mesh(struct model *model, struct pol_mesh *m, uint32_t material_
 			if (has_light_map) {
 				struct vertex_light_uv *v_light_uv = buf_alloc(&ptr, sizeof(struct vertex_light_uv));
 				glm_vec2_copy(m->light_uvs[t->light_uv_index[j]], v_light_uv->uv);
+			}
+			if (has_vertex_colors) {
+				struct vertex_color *v_color = buf_alloc(&ptr, sizeof(struct vertex_color));
+				glm_vec3_copy(m->colors[t->color_index[j]], v_color->color);
 			}
 			if (has_normal_map) {
 				struct vertex_tangent *v_tangent = buf_alloc(&ptr, sizeof(struct vertex_tangent));
@@ -304,6 +320,14 @@ static void add_mesh(struct model *model, struct pol_mesh *m, uint32_t material_
 	} else {
 		glDisableVertexAttribArray(VATTR_LIGHT_UV);
 		glVertexAttrib2f(VATTR_LIGHT_UV, 0.0, 0.0);
+	}
+	if (has_vertex_colors) {
+		glEnableVertexAttribArray(VATTR_COLOR);
+		glVertexAttribPointer(VATTR_COLOR, 3, GL_FLOAT, GL_FALSE, stride, base + offsetof(struct vertex_color, color));
+		base += sizeof(struct vertex_color);
+	} else {
+		glDisableVertexAttribArray(VATTR_COLOR);
+		glVertexAttrib3f(VATTR_COLOR, 1.0, 1.0, 1.0);
 	}
 	if (has_normal_map) {
 		glEnableVertexAttribArray(VATTR_TANGENT);
@@ -463,6 +487,13 @@ struct model *model_load(struct archive *aar, const char *path)
 	for (uint32_t i = 0; i < pol->nr_meshes; i++) {
 		if (!pol->meshes[i])
 			continue;
+		if (!strcmp(pol->meshes[i]->name, "collision")) {
+			if (model->collider)
+				WARNING("multiple collision meshes");
+			else
+				model->collider = collider_create(pol->meshes[i]);
+			continue;
+		}
 		struct pol_material_group *mg = &pol->materials[pol->meshes[i]->material];
 		int m_off = material_offsets[pol->meshes[i]->material];
 		if (mg->nr_children == 0) {
@@ -473,10 +504,6 @@ struct model *model_load(struct archive *aar, const char *path)
 			add_mesh(model, pol->meshes[i], j, m_off + j);
 		}
 	}
-
-	// Collision detection is only required for maps.
-	if (strstr(path, "Map\\"))
-		model->collider = collider_create(pol);
 
 	pol_compute_aabb(pol, model->aabb);
 

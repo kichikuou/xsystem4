@@ -162,8 +162,10 @@ void StoatSpriteEngine_SP_SetTextSpriteEdgeColor(int r, int g, int b)
 
 bool StoatSpriteEngine_SP_SetDashTextSprite(int sp_no, int width, int height)
 {
-	// TODO: This function just draws a horizontal line on the sprite texture
-	NOTICE("StoatSpriteEngine.SP_SetDashTextSprite(%d, %d, %d)", sp_no, width, height);
+	struct sact_sprite *sp = sact_create_sprite(sp_no, width, height, 0, 0, 0, 0);
+	sprite_get_texture(sp); // XXX: force initialization of texture
+	gfx_render_dash_text(&sp->texture, &text_sprite_ts);
+	sprite_dirty(sp);
 	return true;
 }
 
@@ -365,6 +367,18 @@ static void multisprite_update(struct multisprite *ms)
 		ms->cg_dirty = false;
 	}
 	multisprite_update_pos(ms);
+}
+
+static int StoatSpriteEngine_SP_GetMaxZ(void)
+{
+	int max_z = sact_SP_GetMaxZ();
+	for (int t = 0; t < NR_SP_TYPES; t++) {
+		for (int i = 0; i < sp_types[t].nr_sprites; i++) {
+			if (sp_types[t].sprites[i] && max_z < sp_types[t].sprites[i]->sp.sp.z)
+				max_z = sp_types[t].sprites[i]->sp.sp.z;
+		}
+	}
+	return max_z;
 }
 
 static bool StoatSpriteEngine_MultiSprite_SetCG(int type, int n, int cg_no)
@@ -937,7 +951,7 @@ HLL_LIBRARY(StoatSpriteEngine,
 	    HLL_EXPORT(SP_GetUnuseNum, sact_SP_GetUnuseNum),
 	    HLL_EXPORT(SP_Count, sact_SP_Count),
 	    HLL_EXPORT(SP_Enum, sact_SP_Enum),
-	    HLL_EXPORT(SP_GetMaxZ, sact_SP_GetMaxZ),
+	    HLL_EXPORT(SP_GetMaxZ, StoatSpriteEngine_SP_GetMaxZ),
 	    HLL_EXPORT(SP_SetCG, sact_SP_SetCG),
 	    HLL_EXPORT(SP_SetCGFromFile, sact_SP_SetCGFromFile),
 	    HLL_EXPORT(SP_SaveCG, sact_SP_SaveCG),
