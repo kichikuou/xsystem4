@@ -844,6 +844,7 @@ static void setup_lights(struct RE_plugin *plugin)
 {
 	struct RE_renderer *r = plugin->renderer;
 	glUniform3fv(r->camera_pos, 1, plugin->camera.pos);
+
 	int light_index = 0;
 	for (int i = 0; i < plugin->nr_instances; i++) {
 		struct RE_instance *inst = plugin->instances[i];
@@ -1073,7 +1074,7 @@ struct height_detector *RE_renderer_create_height_detector(struct RE_renderer *r
 	GLuint bone_transforms_ubo;
 	glGenBuffers(1, &bone_transforms_ubo);
 	glBindBuffer(GL_UNIFORM_BUFFER, bone_transforms_ubo);
-	glBufferData(GL_UNIFORM_BUFFER, MAX_BONES * sizeof(mat4), NULL, GL_STATIC_DRAW);
+	glBufferData(GL_UNIFORM_BUFFER, MAX_BONES * sizeof(mat3x4), NULL, GL_STATIC_DRAW);
 	glBindBuffer(GL_UNIFORM_BUFFER, 0);
 	glBindBufferBase(GL_UNIFORM_BUFFER, BONE_TRANSFORMS_BINDING, bone_transforms_ubo);
 
