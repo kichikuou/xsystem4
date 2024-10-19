@@ -252,6 +252,9 @@ int gfx_init(void)
 #else
 	window_flags |= SDL_WINDOW_RESIZABLE;
 #endif
+#ifdef __EMSCRIPTEN__
+	window_flags |= SDL_WINDOW_ALLOW_HIGHDPI;
+#endif
 	sdl.window =  SDL_CreateWindow("XSystem4",
 				       SDL_WINDOWPOS_UNDEFINED,
 				       SDL_WINDOWPOS_UNDEFINED,
@@ -330,7 +333,11 @@ void gfx_set_window_logical_size(int w, int h)
 void gfx_update_screen_scale(void)
 {
 	int display_w, display_h;
+#ifdef __EMSCRIPTEN__
+	SDL_GetWindowSize(sdl.window, &display_w, &display_h);
+#else
 	SDL_GL_GetDrawableSize(sdl.window, &display_w, &display_h);
+#endif
 
 	if (display_w * sdl.h == display_h * sdl.w) {
 		// The aspect ratios are the same, just scale appropriately.
@@ -391,7 +398,15 @@ void gfx_set_view_offset(int x, int y)
 void gfx_swap(void)
 {
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+#ifdef __EMSCRIPTEN__
+	double pixel_ratio = emscripten_get_device_pixel_ratio();
+	glViewport(sdl.viewport.x * pixel_ratio,
+	           sdl.viewport.y * pixel_ratio,
+	           sdl.viewport.w * pixel_ratio,
+	           sdl.viewport.h * pixel_ratio);
+#else
 	glViewport(sdl.viewport.x, sdl.viewport.y, sdl.viewport.w, sdl.viewport.h);
+#endif
 	gfx_clear();
 
 	static mat4 wv_transform = MAT4(
