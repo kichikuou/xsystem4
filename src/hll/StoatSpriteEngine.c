@@ -38,6 +38,8 @@
 #include "AnteaterADVEngine.h"
 #include "CharSpriteManager.h"
 
+static bool fps_show = false;
+
 HLL_WARN_UNIMPLEMENTED( , void, StoatSpriteEngine, JoypadQuake_Set, int num, int type, int magnitude);
 HLL_WARN_UNIMPLEMENTED(0, int,  StoatSpriteEngine, SP_SetBrightness, int sp_no, int brightness);
 HLL_WARN_UNIMPLEMENTED(0, int,  StoatSpriteEngine, SP_GetBrightness, int sp_no);
@@ -169,9 +171,19 @@ bool StoatSpriteEngine_SP_SetDashTextSprite(int sp_no, int width, int height)
 	return true;
 }
 
-//static void StoatSpriteEngine_FPS_SetShow(bool bShow);
-//static bool StoatSpriteEngine_FPS_GetShow(void);
-//static float StoatSpriteEngine_FPS_Get(void);
+void StoatSpriteEngine_FPS_SetShow(bool show)
+{
+	fps_show = show;
+}
+bool StoatSpriteEngine_FPS_GetShow(void)
+{
+	return fps_show;
+}
+
+float StoatSpriteEngine_FPS_Get(void)
+{
+	return gfx_get_frame_rate();
+}
 
 HLL_WARN_UNIMPLEMENTED( , void, StoatSpriteEngine, VIEW_SetOffsetPos, int x, int y);
 
@@ -957,7 +969,7 @@ HLL_LIBRARY(StoatSpriteEngine,
 	    HLL_EXPORT(SP_SaveCG, sact_SP_SaveCG),
 	    HLL_EXPORT(SP_Create, sact_SP_Create),
 	    HLL_EXPORT(SP_CreatePixelOnly, sact_SP_CreatePixelOnly),
-	    HLL_TODO_EXPORT(SP_CreateCustom, SACT2_SP_CreateCustom),
+	    HLL_EXPORT(SP_CreateCustom, sact_SP_CreateCustom),
 	    HLL_EXPORT(SP_Delete, sact_SP_Delete),
 	    HLL_EXPORT(SP_DeleteAll, sact_SP_DeleteAll),
 	    HLL_EXPORT(SP_SetPos, sact_SP_SetPos),
@@ -1003,9 +1015,9 @@ HLL_LIBRARY(StoatSpriteEngine,
 	    HLL_EXPORT(SP_SetTextSpriteEdgeWeight, StoatSpriteEngine_SP_SetTextSpriteEdgeWeight),
 	    HLL_EXPORT(SP_SetTextSpriteEdgeColor, StoatSpriteEngine_SP_SetTextSpriteEdgeColor),
 	    HLL_EXPORT(SP_SetDashTextSprite, StoatSpriteEngine_SP_SetDashTextSprite),
-	    HLL_TODO_EXPORT(FPS_SetShow, StoatSpriteEngine_FPS_SetShow),
-	    HLL_TODO_EXPORT(FPS_GetShow, StoatSpriteEngine_FPS_GetShow),
-	    HLL_TODO_EXPORT(FPS_Get, StoatSpriteEngine_FPS_Get),
+	    HLL_EXPORT(FPS_SetShow, StoatSpriteEngine_FPS_SetShow),
+	    HLL_EXPORT(FPS_GetShow, StoatSpriteEngine_FPS_GetShow),
+	    HLL_EXPORT(FPS_Get, StoatSpriteEngine_FPS_Get),
 	    HLL_EXPORT(GAME_MSG_GetNumof, sact_GAME_MSG_GetNumOf),
 	    HLL_TODO_EXPORT(GAME_MSG_Get, SACT2_GAME_MSG_Get),
 	    HLL_EXPORT(IntToZenkaku, sact_IntToZenkaku),

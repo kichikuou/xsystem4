@@ -73,9 +73,10 @@ Texture *gfx_main_surface(void);
 void gfx_set_window_logical_size(int w, int h);
 void gfx_update_screen_scale(void);
 void gfx_set_wait_vsync(bool wait);
+float gfx_get_frame_rate(void);
 
 void gfx_load_shader(struct shader *dst, const char *vertex_shader_path, const char *fragment_shader_path);
-GLuint gfx_load_shader_file(const char *path, GLenum type);
+GLuint gfx_load_shader_file(const char *path, GLenum type, const char *defines);
 
 // rendering
 void gfx_set_clear_color(int r, int g, int b, int a);
@@ -150,6 +151,7 @@ void gfx_bright_dest_only(Texture *dst, int x, int y, int w, int h, int rate);
 void gfx_copy_stretch(struct texture *dst, int dx, int dy, int dw, int dh, struct texture *src, int sx, int sy, int sw, int sh);
 void gfx_copy_stretch_amap(struct texture *dst, int dx, int dy, int dw, int dh, struct texture *src, int sx, int sy, int sw, int sh);
 void gfx_copy_stretch_blend(struct texture *dst, int dx, int dy, int dw, int dh, struct texture *src, int sx, int sy, int sw, int sh, int a);
+void gfx_copy_stretch_blend_screen(struct texture *dst, int dx, int dy, int dw, int dh, struct texture *src, int sx, int sy, int sw, int sh);
 void gfx_copy_stretch_blend_amap(struct texture *dst, int dx, int dy, int dw, int dh, struct texture *src, int sx, int sy, int sw, int sh);
 void gfx_copy_stretch_blend_amap_alpha(struct texture *dst, int dx, int dy, int dw, int dh, struct texture *src, int sx, int sy, int sw, int sh, int a);
 void gfx_copy_rot_zoom(Texture *dst, Texture *src, int sx, int sy, int w, int h, float rotate, float mag);

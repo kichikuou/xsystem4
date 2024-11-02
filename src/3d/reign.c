@@ -39,6 +39,8 @@
 #include "vm.h"
 #include "xsystem4.h"
 
+enum RE_plugin_version re_plugin_version;
+
 static struct RE_instance *create_instance(struct RE_plugin *plugin)
 {
 	struct RE_instance *instance = xcalloc(1, sizeof(struct RE_instance));
@@ -183,13 +185,15 @@ static void update_bones(struct RE_instance *inst)
 		}
 		glm_mat4_copy(bone_transform, parent_transforms[i]);
 
-		glm_mat4_mul(bone_transform, inst->model->bones[i].inverse_bind_matrix, inst->bone_transforms[i]);
-
 		glm_vec3_minv(aabb[0], bone_transform[3], aabb[0]);
 		glm_vec3_maxv(aabb[1], bone_transform[3], aabb[1]);
+
+		glm_mat4_mul(bone_transform, inst->model->bones[i].inverse_bind_matrix, bone_transform);
+		glm_mat4_transpose(bone_transform);  // column major -> row major
+		glm_mat3x4_copy(bone_transform, inst->bone_transforms[i]);
 	}
 	glBindBuffer(GL_UNIFORM_BUFFER, inst->bone_transforms_ubo);
-	glBufferSubData(GL_UNIFORM_BUFFER, 0, inst->model->nr_bones * sizeof(mat4), inst->bone_transforms);
+	glBufferSubData(GL_UNIFORM_BUFFER, 0, inst->model->nr_bones * sizeof(mat3x4), inst->bone_transforms);
 	glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
 	// Update inst->bounding_sphere.
@@ -210,6 +214,8 @@ static void update_bones(struct RE_instance *inst)
 
 struct RE_plugin *RE_plugin_new(enum RE_plugin_version version)
 {
+	re_plugin_version = version;
+
 	char *aar_path = gamedir_path("Data/ReignData.red");
 	int error = ARCHIVE_SUCCESS;
 #ifdef __EMSCRIPTEN__
@@ -227,7 +233,6 @@ struct RE_plugin *RE_plugin_new(enum RE_plugin_version version)
 		return NULL;
 
 	struct RE_plugin *plugin = xcalloc(1, sizeof(struct RE_plugin));
-	plugin->version = version;
 	plugin->plugin.name = "ReignEngine";
 	plugin->plugin.update = RE_render;
 	plugin->plugin.to_json = RE_to_json;
@@ -449,10 +454,10 @@ bool RE_instance_load(struct RE_instance *instance, const char *name)
 				ht_put(instance->plugin->model_cache, name, instance->model);
 		}
 		if (instance->model && instance->model->nr_bones > 0) {
-			instance->bone_transforms = xcalloc(instance->model->nr_bones, sizeof(mat4));
+			instance->bone_transforms = xcalloc(instance->model->nr_bones, sizeof(mat3x4));
 			glGenBuffers(1, &instance->bone_transforms_ubo);
 			glBindBuffer(GL_UNIFORM_BUFFER, instance->bone_transforms_ubo);
-			glBufferData(GL_UNIFORM_BUFFER, MAX_BONES * sizeof(mat4), NULL, GL_DYNAMIC_DRAW);
+			glBufferData(GL_UNIFORM_BUFFER, MAX_BONES * sizeof(mat3x4), NULL, GL_DYNAMIC_DRAW);
 			glBindBuffer(GL_UNIFORM_BUFFER, 0);
 		}
 		return !!instance->model;
@@ -540,7 +545,10 @@ bool RE_instance_trans_local_pos_to_world_pos_by_bone(struct RE_instance *instan
 	if (instance->local_transform_needs_update)
 		RE_instance_update_local_transform(instance);
 
-	glm_mat4_mulv3(instance->bone_transforms[bone], offset, 1.0, out);
+	mat4 bone_transform = GLM_MAT4_IDENTITY_INIT;
+	glm_mat3x4_copy(instance->bone_transforms[bone], bone_transform);
+	glm_mat4_transpose(bone_transform);  // row major -> column major
+	glm_mat4_mulv3(bone_transform, offset, 1.0, out);
 	glm_mat4_mulv3(instance->local_transform, out, 1.0, out);
 	return true;
 }

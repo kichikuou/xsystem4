@@ -63,8 +63,14 @@ enum RE_draw_type {
 };
 
 enum RE_draw_options {
-	RE_DRAW_OPTION_UNKNOWN,
+	RE_DRAW_OPTION_EDGE = 0,
 	RE_DRAW_OPTION_MAX
+};
+
+enum RE_draw_edge_mode {
+	RE_DRAW_EDGE_NONE = 0,
+	RE_DRAW_EDGE_CHARACTERS_ONLY = 1,
+	RE_DRAW_EDGE_ALL = 2,
 };
 
 struct RE_options {
@@ -92,7 +98,6 @@ struct RE_back_cg {
 
 struct RE_plugin {
 	struct draw_plugin plugin;
-	enum RE_plugin_version version;
 	int sprite;
 	int nr_instances;
 	struct RE_instance **instances;
@@ -185,7 +190,7 @@ struct RE_instance {
 	bool local_transform_needs_update;
 	mat4 local_transform;
 	mat3 normal_transform;
-	mat4 *bone_transforms;  // model->nr_bones elements
+	mat3x4 *bone_transforms;  // row-major, model->nr_bones elements
 	GLuint bone_transforms_ubo;
 	vec4 bounding_sphere;
 	struct RE_instance *shadow_volume_instance;

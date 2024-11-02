@@ -71,6 +71,7 @@ static struct texture main_surface;
 static struct texture *view = &main_surface;
 static GLint max_texture_size;
 static SDL_Color clear_color = { 0, 0, 0, 255 };
+static float frame_rate;
 
 static GLchar *read_shader_file(const char *path)
 {
@@ -85,16 +86,17 @@ static GLchar *read_shader_file(const char *path)
 	return source;
 }
 
-GLuint gfx_load_shader_file(const char *path, GLenum type)
+GLuint gfx_load_shader_file(const char *path, GLenum type, const char *defines)
 {
 	GLint shader_compiled;
 	GLuint shader;
-	const GLchar *source[2] = {
+	const GLchar *source[3] = {
 		glsl_preamble,
+		defines ? defines : "",
 		read_shader_file(path)
 	};
 	shader = glCreateShader(type);
-	glShaderSource(shader, 2, source, NULL);
+	glShaderSource(shader, 3, source, NULL);
 	glCompileShader(shader);
 	glGetShaderiv(shader, GL_COMPILE_STATUS, &shader_compiled);
 	if (!shader_compiled) {
@@ -104,15 +106,15 @@ GLuint gfx_load_shader_file(const char *path, GLenum type)
 		glGetShaderInfoLog(shader, len, NULL, infolog);
 		ERROR("Failed to compile shader %s: %s", path, infolog);
 	}
-	SDL_free((char*)source[1]);
+	SDL_free((char*)source[2]);
 	return shader;
 }
 
 void gfx_load_shader(struct shader *dst, const char *vertex_shader_path, const char *fragment_shader_path)
 {
 	GLuint program = glCreateProgram();
-	GLuint vertex_shader = gfx_load_shader_file(vertex_shader_path, GL_VERTEX_SHADER);
-	GLuint fragment_shader = gfx_load_shader_file(fragment_shader_path, GL_FRAGMENT_SHADER);
+	GLuint vertex_shader = gfx_load_shader_file(vertex_shader_path, GL_VERTEX_SHADER, NULL);
+	GLuint fragment_shader = gfx_load_shader_file(fragment_shader_path, GL_FRAGMENT_SHADER, NULL);
 
 	glAttachShader(program, vertex_shader);
 	glAttachShader(program, fragment_shader);
@@ -395,6 +397,25 @@ void gfx_set_view_offset(int x, int y)
 	glm_translate(mw_transform, off);
 }
 
+float gfx_get_frame_rate(void)
+{
+	return frame_rate;
+}
+
+static void gfx_update_frame_rate_counter(void)
+{
+	static uint64_t timestamp;
+	static int frame_count;
+
+	frame_count++;
+	uint64_t current_time = SDL_GetTicks64();
+	if (current_time > timestamp + 1000) {
+		frame_rate = frame_count * 1000.f / (current_time - timestamp);
+		timestamp = current_time;
+		frame_count = 0;
+	}
+}
+
 void gfx_swap(void)
 {
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -427,6 +448,8 @@ void gfx_swap(void)
 	SDL_GL_SwapWindow(sdl.window);
 	glBindFramebuffer(GL_FRAMEBUFFER, main_surface_fb);
 	glViewport(0, 0, sdl.w, sdl.h);
+
+	gfx_update_frame_rate_counter();
 }
 
 void gfx_set_view(struct texture *t)
@@ -570,6 +593,8 @@ void gfx_init_texture_rgba(struct texture *t, int w, int h, SDL_Color color)
 		h = max_texture_size;
 	}
 	gfx_init_texture_blank(t, w, h);
+	if (w <= 0 || h <= 0)
+		return;
 	GLuint fbo = gfx_set_framebuffer(GL_DRAW_FRAMEBUFFER, t, 0, 0, w, h);
 	glClearColor(color.r / 255.f, color.g / 255.f, color.b / 255.f, color.a / 255.f);
 	glClear(GL_COLOR_BUFFER_BIT);
@@ -588,6 +613,8 @@ void gfx_init_texture_rgb(struct texture *t, int w, int h, SDL_Color color)
 	}
 	init_texture(t, w, h);
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, w, h, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+	if (w <= 0 || h <= 0)
+		return;
 	GLuint fbo = gfx_set_framebuffer(GL_DRAW_FRAMEBUFFER, t, 0, 0, w, h);
 	glClearColor(color.r / 255.f, color.g / 255.f, color.b / 255.f, 255.f);
 	glClear(GL_COLOR_BUFFER_BIT);

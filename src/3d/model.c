@@ -29,6 +29,7 @@
 
 #define FP16_MIN 6.103516e-5f
 #define NR_WEIGHTS 4
+#define DEFAULT_OUTLINE_THICKNESS 0.003
 
 struct vertex_common {
 	GLfloat pos[3];
@@ -41,7 +42,7 @@ struct vertex_light_uv {
 };
 
 struct vertex_color {
-	GLfloat color[3];
+	GLfloat color[4];
 };
 
 struct vertex_tangent {
@@ -52,6 +53,22 @@ struct vertex_bones {
 	GLint bone_id[NR_WEIGHTS];
 	GLfloat bone_weight[NR_WEIGHTS];
 };
+
+static bool is_transparent_mesh(const struct pol_mesh *mesh)
+{
+	if (re_plugin_version == RE_REIGN_PLUGIN)
+		return !(mesh->flags & MESH_SPRITE);
+	else
+		return mesh->flags & MESH_ALPHA;
+}
+
+static bool is_transparent_material(const struct pol_material *material)
+{
+	if (re_plugin_version == RE_REIGN_PLUGIN)
+		return !(material->flags & MATERIAL_SPRITE);
+	else
+		return material->flags & MATERIAL_ALPHA;
+}
 
 struct archive_data *RE_get_aar_entry(struct archive *aar, const char *dir, const char *name, const char *ext)
 {
@@ -119,7 +136,7 @@ static bool init_material(struct material *material, const struct pol_material *
 	if (m->textures[NORMAL_MAP])
 		material->normal_map = load_texture(aar, path, m->textures[NORMAL_MAP], NULL);
 
-	material->is_transparent = (has_alpha || material->alpha_map) && !(material->flags & MATERIAL_SPRITE);
+	material->is_transparent = (has_alpha || material->alpha_map) && is_transparent_material(m);
 	material->shadow_darkness = 1.0f;
 
 	struct amt_material *amt_m = amt ? amt_find_material(amt, m->name) : NULL;
@@ -226,7 +243,7 @@ static void *buf_alloc(uint8_t **ptr, int size)
 static void add_mesh(struct model *model, struct pol_mesh *m, uint32_t material_group_index, int material)
 {
 	bool has_light_map = m->light_uvs && model->materials[material].light_map;
-	bool has_vertex_colors = m->nr_colors > 0;
+	bool has_vertex_colors = m->nr_colors > 0 || m->nr_alphas > 0;
 	bool has_normal_map = model->materials[material].normal_map != 0;
 	bool has_bones = !!model->bone_map;
 
@@ -263,7 +280,11 @@ static void add_mesh(struct model *model, struct pol_mesh *m, uint32_t material_
 			}
 			if (has_vertex_colors) {
 				struct vertex_color *v_color = buf_alloc(&ptr, sizeof(struct vertex_color));
-				glm_vec3_copy(m->colors[t->color_index[j]], v_color->color);
+				if (m->nr_colors > 0)
+					glm_vec3_copy(m->colors[t->color_index[j]], v_color->color);
+				else
+					glm_vec3_one(v_color->color);
+				v_color->color[3] = m->nr_alphas > 0 ? m->alphas[t->alpha_index[j]] : 1.f;
 			}
 			if (has_normal_map) {
 				struct vertex_tangent *v_tangent = buf_alloc(&ptr, sizeof(struct vertex_tangent));
@@ -298,6 +319,17 @@ static void add_mesh(struct model *model, struct pol_mesh *m, uint32_t material_
 	struct mesh *mesh = &model->meshes[model->nr_meshes++];
 	mesh->flags = m->flags;
 	mesh->material = material;
+	if (re_plugin_version == RE_REIGN_PLUGIN)
+		mesh->is_transparent = model->materials[material].is_transparent && is_transparent_mesh(m);
+	else
+		mesh->is_transparent = model->materials[material].is_transparent || is_transparent_mesh(m);
+	if (mesh->is_transparent)
+		model->has_transparent_mesh = true;
+	mesh->outline_color[0] = m->edge_color.r / 255.f;
+	mesh->outline_color[1] = m->edge_color.g / 255.f;
+	mesh->outline_color[2] = m->edge_color.b / 255.f;
+	mesh->outline_thickness = m->edge_size ? m->edge_size : DEFAULT_OUTLINE_THICKNESS;
+	glm_vec2_copy(m->uv_scroll, mesh->uv_scroll);
 	mesh->nr_vertices = nr_vertices;
 
 	glGenVertexArrays(1, &mesh->vao);
@@ -323,11 +355,11 @@ static void add_mesh(struct model *model, struct pol_mesh *m, uint32_t material_
 	}
 	if (has_vertex_colors) {
 		glEnableVertexAttribArray(VATTR_COLOR);
-		glVertexAttribPointer(VATTR_COLOR, 3, GL_FLOAT, GL_FALSE, stride, base + offsetof(struct vertex_color, color));
+		glVertexAttribPointer(VATTR_COLOR, 4, GL_FLOAT, GL_FALSE, stride, base + offsetof(struct vertex_color, color));
 		base += sizeof(struct vertex_color);
 	} else {
 		glDisableVertexAttribArray(VATTR_COLOR);
-		glVertexAttrib3f(VATTR_COLOR, 1.0, 1.0, 1.0);
+		glVertexAttrib4f(VATTR_COLOR, 1.0, 1.0, 1.0, 1.0);
 	}
 	if (has_normal_map) {
 		glEnableVertexAttribArray(VATTR_TANGENT);
@@ -440,6 +472,13 @@ struct model *model_load(struct archive *aar, const char *path)
 	struct model *model = xcalloc(1, sizeof(struct model));
 	model->path = strdup(path);
 
+	// Load .opr file, if any
+	struct archive_data *opr_file = RE_get_aar_entry(aar, path, basename, ".opr");
+	if (opr_file) {
+		opr_load(opr_file->data, opr_file->size, pol);
+		archive_free_data(opr_file);
+	}
+
 	// Bones
 	if (pol->nr_bones > 0) {
 		if (pol->nr_bones > MAX_BONES)
@@ -474,12 +513,6 @@ struct model *model_load(struct archive *aar, const char *path)
 		for (uint32_t j = 0; j < pol->materials[i].nr_children; j++) {
 			init_material(&model->materials[material_offsets[i] + j],
 				      &pol->materials[i].children[j], amt, aar, path);
-		}
-	}
-	for (int i = 0; i < model->nr_materials; i++) {
-		if (model->materials[i].is_transparent) {
-			model->has_transparent_material = true;
-			break;
 		}
 	}
 
@@ -633,7 +666,7 @@ struct model *model_create_sphere(int r, int g, int b, int a)
 	uint8_t pixel[4] = {r, g, b, a};
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixel);
 	glBindTexture(GL_TEXTURE_2D, 0);
-	model->has_transparent_material = true;
+	model->has_transparent_mesh = true;
 
 	return model;
 }

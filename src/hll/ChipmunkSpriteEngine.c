@@ -205,8 +205,6 @@ HLL_WARN_UNIMPLEMENTED(false, bool, ChipmunkSpriteEngine, SP_Suspend, int sp_no)
 //static void ChipmunkSpriteEngine_CombineTexture(void);
 //static void ChipmunkSpriteEngine_ReleaseCombinedTexture(void);
 
-HLL_WARN_UNIMPLEMENTED( , void, StoatSpriteEngine, FPS_SetShow, bool bShow);
-HLL_WARN_UNIMPLEMENTED(false, bool, StoatSpriteEngine, FPS_GetShow, void);
 
 HLL_LIBRARY(ChipmunkSpriteEngine,
 	    HLL_EXPORT(_PreLink, ChipmunkSpriteEngine_PreLink),
@@ -225,7 +223,7 @@ HLL_LIBRARY(ChipmunkSpriteEngine,
 	    HLL_EXPORT(SP_SaveCG, sact_SP_SaveCG),
 	    HLL_EXPORT(SP_Create, sact_SP_Create),
 	    HLL_EXPORT(SP_CreatePixelOnly, sact_SP_CreatePixelOnly),
-	    HLL_TODO_EXPORT(SP_CreateCustom, SACT2_SP_CreateCustom),
+	    HLL_EXPORT(SP_CreateCustom, sact_SP_CreateCustom),
 	    HLL_EXPORT(SP_Delete, sact_SP_Delete),
 	    HLL_EXPORT(SP_DeleteAll, sact_SP_DeleteAll),
 	    HLL_EXPORT(SP_SetPos, sact_SP_SetPos),
@@ -277,7 +275,7 @@ HLL_LIBRARY(ChipmunkSpriteEngine,
 	    HLL_TODO_EXPORT(SP_GetAlphaClipperSpriteNumber, ChipmunkSpriteEngine_SP_GetAlphaClipperSpriteNumber),
 	    HLL_EXPORT(FPS_SetShow, StoatSpriteEngine_FPS_SetShow),
 	    HLL_EXPORT(FPS_GetShow, StoatSpriteEngine_FPS_GetShow),
-	    HLL_TODO_EXPORT(FPS_Get, StoatSpriteEngine_FPS_Get),
+	    HLL_EXPORT(FPS_Get, StoatSpriteEngine_FPS_Get),
 	    HLL_EXPORT(GAME_MSG_GetNumof, sact_GAME_MSG_GetNumOf),
 	    HLL_TODO_EXPORT(GAME_MSG_Get, SACT2_GAME_MSG_Get),
 	    HLL_EXPORT(IntToZenkaku, sact_IntToZenkaku),

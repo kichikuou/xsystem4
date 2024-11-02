@@ -1,4 +1,4 @@
-/* Copyright (C) 2022 kichikuou <KichikuouChrome@gmail.com>
+/* Copyright (C) 2024 kichikuou <KichikuouChrome@gmail.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -14,19 +14,9 @@
  * along with this program; if not, see <http://gnu.org/licenses/>.
  */
 
-#ifndef SYSTEM4_PLUGIN_H
-#define SYSTEM4_PLUGIN_H
+uniform vec3 outline_color;
+out vec4 frag_color;
 
-#include <stdbool.h>
-
-typedef struct cJSON cJSON;
-struct sact_sprite;
-
-struct draw_plugin {
-	const char *name;
-	void (*update)(struct sact_sprite *);
-	void (*render)(struct sact_sprite *);  // for custom sprites
-	cJSON *(*to_json)(struct sact_sprite *, bool);
-};
-
-#endif /* SYSTEM4_PLUGIN_H */
+void main() {
+	frag_color = vec4(outline_color, 1.0);
+}

@@ -46,17 +46,21 @@ struct model {
 	struct hash_table *mot_cache;  // name -> struct mot *
 	struct collider *collider;
 	vec3 aabb[2];  // axis-aligned bounding box
-	bool has_transparent_material;
+	bool has_transparent_mesh;
 };
 
 struct mesh {
 	uint32_t flags;
+	bool is_transparent;
 	GLuint vao;
 	GLuint attr_buffer;
 	GLuint index_buffer;
 	int nr_vertices;
 	int nr_indices;
 	int material;
+	vec3 outline_color;
+	float outline_thickness;
+	vec2 uv_scroll;
 };
 
 struct material {
@@ -108,18 +112,31 @@ struct shadow_renderer {
 	GLuint texture;
 
 	// Uniform variable locations
-	GLint world_transform;
+	GLint local_transform;
 	GLint view_transform;
 	GLint has_bones;
+};
+
+struct outline_renderer {
+	GLuint program;
+
+	// Uniform variable locations
+	GLint local_transform;
+	GLint view_transform;
+	GLint proj_transform;
+	GLint normal_transform;
+	GLint has_bones;
+	GLint outline_color;
+	GLint outline_thickness;
 };
 
 struct RE_renderer {
 	GLuint program;
 	GLuint depth_buffer;
 	struct shadow_renderer shadow;
+	struct outline_renderer outline;
 
 	// Uniform variable locations
-	GLint world_transform;
 	GLint view_transform;
 	GLint texture;
 	GLint local_transform;
@@ -127,7 +144,8 @@ struct RE_renderer {
 	GLint normal_transform;
 	GLint alpha_mod;
 	GLint has_bones;
-	GLint ambient;
+	GLint global_ambient;
+	GLint instance_ambient;
 	struct {
 		GLint dir;
 		GLint diffuse;
@@ -160,6 +178,7 @@ struct RE_renderer {
 	GLint ls_sun_color;
 	GLint alpha_mode;
 	GLint alpha_texture;
+	GLint uv_scroll;
 
 	GLuint billboard_vao;
 	GLuint billboard_attr_buffer;
@@ -174,6 +193,8 @@ struct billboard_texture {
 };
 
 // reign.c
+
+extern enum RE_plugin_version re_plugin_version;
 
 void RE_instance_update_local_transform(struct RE_instance *inst);
 
@@ -392,6 +413,7 @@ enum pol_texture_type {
 
 enum material_flags {
 	MATERIAL_SPRITE = 1 << 0,
+	MATERIAL_ALPHA  = 1 << 1,
 };
 
 struct pol_material {
@@ -407,11 +429,15 @@ struct pol_material_group {
 };
 
 enum mesh_flags {
-	MESH_NOLIGHTING   = 1 << 0,
-	MESH_NOMAKESHADOW = 1 << 1,
-	MESH_ENVMAP       = 1 << 2,
-	MESH_BOTH         = 1 << 3,
-	MESH_SPRITE       = 1 << 4,
+	MESH_NOLIGHTING          = 1 << 0,
+	MESH_NOMAKESHADOW        = 1 << 1,
+	MESH_ENVMAP              = 1 << 2,
+	MESH_BOTH                = 1 << 3,
+	MESH_SPRITE              = 1 << 4,
+	MESH_BLEND_ADDITIVE      = 1 << 5,
+	MESH_NO_EDGE             = 1 << 6,
+	MESH_NO_HEIGHT_DETECTION = 1 << 7,
+	MESH_ALPHA               = 1 << 8,
 };
 
 struct pol_mesh {
@@ -426,8 +452,14 @@ struct pol_mesh {
 	vec2 *light_uvs;
 	uint32_t nr_colors;
 	vec3 *colors;
+	uint32_t nr_alphas;
+	float *alphas;
 	uint32_t nr_triangles;
 	struct pol_triangle *triangles;
+	// Parameters in .opr file.
+	Color edge_color;
+	float edge_size;
+	vec2 uv_scroll;
 };
 
 struct pol_vertex {
@@ -446,6 +478,7 @@ struct pol_triangle {
 	uint32_t uv_index[3];
 	uint32_t light_uv_index[3];
 	uint32_t color_index[3];
+	uint32_t alpha_index[3];
 	vec3 normals[3];
 	uint32_t material_group_index;
 };
@@ -511,6 +544,8 @@ void mot_free(struct mot *mot);
 struct amt *amt_parse(uint8_t *data, size_t size);
 void amt_free(struct amt *amt);
 struct amt_material *amt_find_material(struct amt *amt, const char *name);
+
+void opr_load(uint8_t *data, size_t size, struct pol *pol);
 
 // collision.c
 

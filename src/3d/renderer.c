@@ -61,9 +61,17 @@ enum draw_phase {
 
 static GLuint load_shader(const char *vertex_shader_path, const char *fragment_shader_path)
 {
+	char defines[256];
+	snprintf(defines, sizeof(defines),
+			 "#define REIGN_ENGINE %d\n"
+			 "#define TAPIR_ENGINE %d\n"
+			 "#define ENGINE %d",
+			 RE_REIGN_PLUGIN,
+			 RE_TAPIR_PLUGIN,
+			 re_plugin_version);
 	GLuint program = glCreateProgram();
-	GLuint vertex_shader = gfx_load_shader_file(vertex_shader_path, GL_VERTEX_SHADER);
-	GLuint fragment_shader = gfx_load_shader_file(fragment_shader_path, GL_FRAGMENT_SHADER);
+	GLuint vertex_shader = gfx_load_shader_file(vertex_shader_path, GL_VERTEX_SHADER, defines);
+	GLuint fragment_shader = gfx_load_shader_file(fragment_shader_path, GL_FRAGMENT_SHADER, defines);
 
 	glAttachShader(program, vertex_shader);
 	glAttachShader(program, fragment_shader);
@@ -99,7 +107,7 @@ static void init_shadow_renderer(struct shadow_renderer *sr)
 	glGetIntegerv(GL_FRAMEBUFFER_BINDING, &orig_fbo);
 
 	sr->program = load_shader("shaders/reign_shadow.v.glsl", "shaders/reign_shadow.f.glsl");
-	sr->world_transform = glGetUniformLocation(sr->program, "world_transform");
+	sr->local_transform = glGetUniformLocation(sr->program, "local_transform");
 	sr->view_transform = glGetUniformLocation(sr->program, "view_transform");
 	sr->has_bones = glGetUniformLocation(sr->program, "has_bones");
 	GLuint bone_transforms = glGetUniformBlockIndex(sr->program, "BoneTransforms");
@@ -128,6 +136,30 @@ static void destroy_shadow_renderer(struct shadow_renderer *sr)
 	glDeleteProgram(sr->program);
 }
 
+static void init_outline_renderer(struct outline_renderer *or)
+{
+	if (re_plugin_version < RE_TAPIR_PLUGIN) {
+		or->program = 0;
+		return;
+	}
+	or->program = load_shader("shaders/reign_outline.v.glsl", "shaders/reign_outline.f.glsl");
+	or->local_transform = glGetUniformLocation(or->program, "local_transform");
+	or->view_transform = glGetUniformLocation(or->program, "view_transform");
+	or->proj_transform = glGetUniformLocation(or->program, "proj_transform");
+	or->normal_transform = glGetUniformLocation(or->program, "normal_transform");
+	or->has_bones = glGetUniformLocation(or->program, "has_bones");
+	GLuint bone_transforms = glGetUniformBlockIndex(or->program, "BoneTransforms");
+	glUniformBlockBinding(or->program, bone_transforms, BONE_TRANSFORMS_BINDING);
+	or->outline_color = glGetUniformLocation(or->program, "outline_color");
+	or->outline_thickness = glGetUniformLocation(or->program, "outline_thickness");
+}
+
+static void destroy_outline_renderer(struct outline_renderer *or)
+{
+	if (or->program)
+		glDeleteProgram(or->program);
+}
+
 static void init_billboard_mesh(struct RE_renderer *r)
 {
 	static const GLfloat vertices[] = {
@@ -149,7 +181,7 @@ static void init_billboard_mesh(struct RE_renderer *r)
 	glDisableVertexAttribArray(VATTR_LIGHT_UV);
 	glVertexAttrib2f(VATTR_LIGHT_UV, 0.0, 0.0);
 	glDisableVertexAttribArray(VATTR_COLOR);
-	glVertexAttrib3f(VATTR_COLOR, 1.0, 1.0, 1.0);
+	glVertexAttrib4f(VATTR_COLOR, 1.0, 1.0, 1.0, 1.0);
 	glDisableVertexAttribArray(VATTR_NORMAL);
 	glVertexAttrib3f(VATTR_NORMAL, 0.0, 0.0, 1.0);
 	glDisableVertexAttribArray(VATTR_TANGENT);
@@ -176,7 +208,6 @@ struct RE_renderer *RE_renderer_new(void)
 	struct RE_renderer *r = xcalloc(1, sizeof(struct RE_renderer));
 
 	r->program = load_shader("shaders/reign.v.glsl", "shaders/reign.f.glsl");
-	r->world_transform = glGetUniformLocation(r->program, "world_transform");
 	r->view_transform = glGetUniformLocation(r->program, "view_transform");
 	r->texture = glGetUniformLocation(r->program, "tex");
 	r->local_transform = glGetUniformLocation(r->program, "local_transform");
@@ -186,7 +217,8 @@ struct RE_renderer *RE_renderer_new(void)
 	r->has_bones = glGetUniformLocation(r->program, "has_bones");
 	GLuint bone_transforms = glGetUniformBlockIndex(r->program, "BoneTransforms");
 	glUniformBlockBinding(r->program, bone_transforms, BONE_TRANSFORMS_BINDING);
-	r->ambient = glGetUniformLocation(r->program, "ambient");
+	r->global_ambient = glGetUniformLocation(r->program, "global_ambient");
+	r->instance_ambient = glGetUniformLocation(r->program, "instance_ambient");
 	for (int i = 0; i < NR_DIR_LIGHTS; i++) {
 		char buf[64];
 		sprintf(buf, "dir_lights[%d].dir", i);
@@ -222,10 +254,12 @@ struct RE_renderer *RE_renderer_new(void)
 	r->ls_sun_color = glGetUniformLocation(r->program, "ls_sun_color");
 	r->alpha_mode = glGetUniformLocation(r->program, "alpha_mode");
 	r->alpha_texture = glGetUniformLocation(r->program, "alpha_texture");
+	r->uv_scroll = glGetUniformLocation(r->program, "uv_scroll");
 
 	glGenRenderbuffers(1, &r->depth_buffer);
 
 	init_shadow_renderer(&r->shadow);
+	init_outline_renderer(&r->outline);
 	init_billboard_mesh(r);
 	r->billboard_textures = ht_create(256);
 	r->last_frame_timestamp = SDL_GetTicks();
@@ -280,6 +314,7 @@ void RE_renderer_free(struct RE_renderer *r)
 	ht_free_int(r->billboard_textures);
 	destroy_billboard_mesh(r);
 	destroy_shadow_renderer(&r->shadow);
+	destroy_outline_renderer(&r->outline);
 	free(r);
 }
 
@@ -303,7 +338,7 @@ static void render_model(struct RE_instance *inst, struct RE_renderer *r, enum d
 	if (!inst->model)
 		return;
 	bool all_transparent = inst->alpha < 1.0f;
-	bool all_opaque = !model->has_transparent_material && inst->alpha >= 1.0f;
+	bool all_opaque = !model->has_transparent_mesh && inst->alpha >= 1.0f;
 	if ((phase == DRAW_OPAQUE && all_transparent) || (phase == DRAW_TRANSPARENT && all_opaque))
 		return;
 
@@ -313,9 +348,7 @@ static void render_model(struct RE_instance *inst, struct RE_renderer *r, enum d
 	glUniformMatrix4fv(r->local_transform, 1, GL_FALSE, inst->local_transform[0]);
 	glUniformMatrix3fv(r->normal_transform, 1, GL_FALSE, inst->normal_transform[0]);
 	glUniform1f(r->alpha_mod, inst->alpha);
-	vec3 ambient;
-	glm_vec3_add(inst->plugin->global_ambient, inst->ambient, ambient);
-	glUniform3fv(r->ambient, 1, ambient);
+	glUniform3fv(r->instance_ambient, 1, inst->ambient);
 
 	bool draw_shadow = inst->draw_shadow && inst->plugin->shadow_mode;
 	if (draw_shadow) {
@@ -329,7 +362,7 @@ static void render_model(struct RE_instance *inst, struct RE_renderer *r, enum d
 	for (int i = 0; i < model->nr_meshes; i++) {
 		struct mesh *mesh = &model->meshes[i];
 		struct material *material = &model->materials[mesh->material];
-		bool is_transparent = (material->is_transparent && !(mesh->flags & MESH_SPRITE)) || inst->alpha < 1.0f;
+		bool is_transparent = mesh->is_transparent || inst->alpha < 1.0f;
 		if (phase != (is_transparent ? DRAW_TRANSPARENT : DRAW_OPAQUE))
 			continue;
 
@@ -391,19 +424,26 @@ static void render_model(struct RE_instance *inst, struct RE_renderer *r, enum d
 			glActiveTexture(GL_TEXTURE0 + ALPHA_TEXTURE_UNIT);
 			glBindTexture(GL_TEXTURE_2D, material->alpha_map);
 			glUniform1i(r->alpha_texture, ALPHA_TEXTURE_UNIT);
-		} else if (material->flags & MATERIAL_SPRITE || mesh->flags & MESH_SPRITE) {
-			glUniform1i(r->alpha_mode, ALPHA_TEST);
 		} else {
-			glUniform1i(r->alpha_mode, ALPHA_BLEND);
+			glUniform1i(r->alpha_mode, mesh->is_transparent ? ALPHA_BLEND : ALPHA_TEST);
 		}
 
+		vec2 uv_scroll;
+		glm_vec2_scale(mesh->uv_scroll, r->last_frame_timestamp / 1000.f, uv_scroll);
+		glUniform2fv(r->uv_scroll, 1, uv_scroll);
+
 		glBindVertexArray(mesh->vao);
+
+		if (mesh->flags & MESH_BOTH)
+			glDisable(GL_CULL_FACE);
 
 		if (mesh->nr_indices)
 			glDrawElements(GL_TRIANGLES, mesh->nr_indices, GL_UNSIGNED_SHORT, NULL);
 		else
 			glDrawArrays(GL_TRIANGLES, 0, mesh->nr_vertices);
 
+		if (mesh->flags & MESH_BOTH)
+			glEnable(GL_CULL_FACE);
 		glBindVertexArray(0);
 		glBindTexture(GL_TEXTURE_2D, 0);
 	}
@@ -461,9 +501,7 @@ static void render_billboard(struct RE_instance *inst, struct RE_renderer *r, ma
 	// This should be safe because billboards do not have non-uniform scaling.
 	glm_mat4_pick3(local_transform, normal_transform);
 
-	vec3 ambient;
-	glm_vec3_add(inst->plugin->global_ambient, inst->ambient, ambient);
-	glUniform3fv(r->ambient, 1, ambient);
+	glUniform3fv(r->instance_ambient, 1, inst->ambient);
 
 	glUniformMatrix4fv(r->local_transform, 1, GL_FALSE, local_transform[0]);
 	glUniformMatrix3fv(r->normal_transform, 1, GL_FALSE, normal_transform[0]);
@@ -587,9 +625,7 @@ static void render_particle_effect(struct RE_instance *inst, struct RE_renderer 
 	if (!inst->effect || phase == DRAW_OPAQUE)
 		return;
 
-	vec3 ambient;
-	glm_vec3_add(inst->plugin->global_ambient, inst->ambient, ambient);
-	glUniform3fv(r->ambient, 1, ambient);
+	glUniform3fv(r->instance_ambient, 1, inst->ambient);
 
 	glUniform1i(r->has_bones, GL_FALSE);
 	glUniform1f(r->specular_strength, 0.0);
@@ -729,7 +765,7 @@ static void render_shadow_map(struct RE_plugin *plugin, mat4 light_space_transfo
 		} else {
 			glUniform1i(r->shadow.has_bones, GL_FALSE);
 		}
-		glUniformMatrix4fv(r->shadow.world_transform, 1, GL_FALSE, inst->local_transform[0]);
+		glUniformMatrix4fv(r->shadow.local_transform, 1, GL_FALSE, inst->local_transform[0]);
 		for (int j = 0; j < model->nr_meshes; j++) {
 			struct mesh *mesh = &model->meshes[j];
 			if (mesh->flags & MESH_NOMAKESHADOW)
@@ -745,6 +781,49 @@ static void render_shadow_map(struct RE_plugin *plugin, mat4 light_space_transfo
 	glViewport(orig_viewport[0], orig_viewport[1], orig_viewport[2], orig_viewport[3]);
 }
 
+static void render_outlines(struct RE_plugin *plugin, mat4 view_transform)
+{
+	enum RE_draw_edge_mode mode = plugin->draw_options[RE_DRAW_OPTION_EDGE];
+	if (mode == RE_DRAW_EDGE_NONE)
+		return;
+	struct outline_renderer *or = &plugin->renderer->outline;
+	if (!or->program)
+		return;
+	glUseProgram(or->program);
+	glUniformMatrix4fv(or->view_transform, 1, GL_FALSE, view_transform[0]);
+	glUniformMatrix4fv(or->proj_transform, 1, GL_FALSE, plugin->proj_transform[0]);
+
+	glCullFace(GL_FRONT);
+	for (int i = 0; i < plugin->nr_instances; i++) {
+		struct RE_instance *inst = plugin->instances[i];
+		if (!inst || !inst->draw)
+			continue;
+		if (mode == RE_DRAW_EDGE_CHARACTERS_ONLY && inst->type != RE_ITYPE_SKINNED)
+			continue;
+		struct model *model = inst->model;
+		if (inst->model && model->nr_bones > 0) {
+			glUniform1i(or->has_bones, GL_TRUE);
+			glBindBufferBase(GL_UNIFORM_BUFFER, BONE_TRANSFORMS_BINDING, inst->bone_transforms_ubo);
+		} else {
+			glUniform1i(or->has_bones, GL_FALSE);
+		}
+		glUniformMatrix4fv(or->local_transform, 1, GL_FALSE, inst->local_transform[0]);
+		glUniformMatrix3fv(or->normal_transform, 1, GL_FALSE, inst->normal_transform[0]);
+		for (int j = 0; j < model->nr_meshes; j++) {
+			struct mesh *mesh = &model->meshes[j];
+			if (mesh->flags & MESH_NO_EDGE)
+				continue;
+			glUniform3fv(or->outline_color, 1, mesh->outline_color);
+			glUniform1f(or->outline_thickness, mesh->outline_thickness);
+			glBindVertexArray(mesh->vao);
+			glDrawArrays(GL_TRIANGLES, 0, mesh->nr_vertices);
+		}
+		glBindVertexArray(0);
+	}
+	glCullFace(GL_BACK);
+	glUseProgram(plugin->renderer->program);
+}
+
 static void render_back_cg(struct texture *dst, struct RE_back_cg *bcg, struct RE_renderer *r)
 {
 	if (!bcg->show || !bcg->texture.handle)
@@ -758,6 +837,7 @@ static void setup_lights(struct RE_plugin *plugin)
 {
 	struct RE_renderer *r = plugin->renderer;
 	glUniform3fv(r->camera_pos, 1, plugin->camera.pos);
+	glUniform3fv(r->global_ambient, 1, plugin->global_ambient);
 	int light_index = 0;
 	for (int i = 0; i < plugin->nr_instances; i++) {
 		struct RE_instance *inst = plugin->instances[i];
@@ -831,7 +911,7 @@ void RE_render(struct sact_sprite *sp)
 	if (!r || plugin->suspended)
 		return;
 
-	if (plugin->version == RE_TAPIR_PLUGIN) {
+	if (re_plugin_version == RE_TAPIR_PLUGIN) {
 		uint32_t timestamp = SDL_GetTicks();
 		RE_build_model(plugin, timestamp - r->last_frame_timestamp);
 		r->last_frame_timestamp = timestamp;
@@ -912,6 +992,10 @@ void RE_render(struct sact_sprite *sp)
 			continue;
 		render_instance(inst, r, view_transform, DRAW_OPAQUE);
 	}
+
+	// Render outlines.
+	render_outlines(plugin, view_transform);
+
 	// Render transparent instances, from farthest to nearest.
 	for (int i = 0; i < plugin->nr_instances; i++) {
 		struct RE_instance *inst = sorted_instances[i];
@@ -975,7 +1059,7 @@ struct height_detector *RE_renderer_create_height_detector(struct RE_renderer *r
 	glViewport(0, 0, SHADOW_WIDTH, SHADOW_HEIGHT);
 	glClear(GL_DEPTH_BUFFER_BIT);
 	glUseProgram(r->shadow.program);
-	glUniformMatrix4fv(r->shadow.world_transform, 1, GL_FALSE, view_matrix[0]);
+	glUniformMatrix4fv(r->shadow.local_transform, 1, GL_FALSE, view_matrix[0]);
 	glUniformMatrix4fv(r->shadow.view_transform, 1, GL_FALSE, proj_matrix[0]);
 	glUniform1i(r->shadow.has_bones, GL_FALSE);
 
@@ -983,7 +1067,7 @@ struct height_detector *RE_renderer_create_height_detector(struct RE_renderer *r
 	GLuint bone_transforms_ubo;
 	glGenBuffers(1, &bone_transforms_ubo);
 	glBindBuffer(GL_UNIFORM_BUFFER, bone_transforms_ubo);
-	glBufferData(GL_UNIFORM_BUFFER, MAX_BONES * sizeof(mat4), NULL, GL_STATIC_DRAW);
+	glBufferData(GL_UNIFORM_BUFFER, MAX_BONES * sizeof(mat3x4), NULL, GL_STATIC_DRAW);
 	glBindBuffer(GL_UNIFORM_BUFFER, 0);
 	glBindBufferBase(GL_UNIFORM_BUFFER, BONE_TRANSFORMS_BINDING, bone_transforms_ubo);
 
