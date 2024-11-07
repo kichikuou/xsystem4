@@ -175,6 +175,27 @@ bool dbg_clear_breakpoint(uint32_t addr, void(*free_data)(void*))
 	return true;
 }
 
+struct dbg_foreach_data {
+	void (*fun)(struct breakpoint*, int, void*);
+	void *data;
+};
+
+void dbg_foreach_breakpoint_cb(struct ht_slot *slot, void *d_)
+{
+	if (!slot->value)
+		return;
+	struct dbg_foreach_data *d = d_;
+	d->fun(slot->value, slot->ikey, d->data);
+}
+
+void dbg_foreach_breakpoint(void (*fun)(struct breakpoint*, int, void*), void *data)
+{
+	if (!bp_table)
+		return;
+	struct dbg_foreach_data d = { fun, data };
+	ht_foreach(bp_table, dbg_foreach_breakpoint_cb, &d);
+}
+
 bool dbg_set_function_breakpoint(const char *_name, void(*cb)(struct breakpoint*), void *data)
 {
 	char *name = utf2sjis(_name, 0);

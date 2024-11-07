@@ -56,6 +56,15 @@ static enum {
 	DAP_STOPPED
 } dap_state = DAP_UNINITIALIZED;
 
+static enum {
+	NOT_STEPPING = 0,
+	STEPPING_INTO,
+	STEPPING_OVER,
+	STEPPING_FINISH
+} stepping = NOT_STEPPING;
+static int stepping_file = 0;
+static int stepping_line = 0;
+
 static struct msgq *queue;
 
 static void json_add_sjis_to_object(cJSON *obj, const char *name, const char *sjis)
@@ -127,6 +136,7 @@ static void emit_stopped_event(struct dbg_stop *stop)
 	}
 	if (stop->message)
 		cJSON_AddStringToObject(body, "text", stop->message);
+	cJSON_AddBoolToObject(body, "allThreadsStopped", true);
 	emit_event("stopped", body);
 }
 
@@ -182,7 +192,8 @@ static void cmd_stackTrace(cJSON *args, cJSON *resp)
 	cJSON_AddItemToObjectCS(resp, "body", body = cJSON_CreateObject());
 	cJSON_AddNumberToObject(body, "totalFrames", call_stack_ptr);
 	cJSON_AddItemToObjectCS(body, "stackFrames", stack_frames = cJSON_CreateArray());
-	for (int i = 0; i < call_stack_ptr; i++) {
+	for (int no = 0; no < call_stack_ptr; no++) {
+		int i = call_stack_ptr - (1 + no);
 		cJSON_AddItemToArray(stack_frames, frame = cJSON_CreateObject());
 		cJSON_AddNumberToObject(frame, "id", i);
 		// this *shouldn't* happen, but since we're in the debugger...
@@ -193,13 +204,24 @@ static void cmd_stackTrace(cJSON *args, cJSON *resp)
 			json_add_sjis_to_object(frame, "name", ain->functions[fno].name);
 		}
 		char ip[9];
-		if (i == call_stack_ptr - 1) {
-			snprintf(ip, 9, "%x", (unsigned)instr_ptr);
-		} else {
-			snprintf(ip, 9, "%x", call_stack[i].call_address);
-		}
+		int addr = no ? call_stack[i+1].call_address : instr_ptr;
+		snprintf(ip, 9, "%x", (unsigned)addr);
 		cJSON_AddStringToObject(frame, "instructionPointerReference", ip);
-		cJSON_AddNumberToObject(frame, "line", 0);
+		int file, line;
+		if (dbg_info && dbg_info_addr2line(dbg_info, addr, &file, &line)) {
+			cJSON_AddNumberToObject(frame, "line", line);
+
+			const char *fname = dbg_info_source_name(dbg_info, file);
+			cJSON *source = cJSON_CreateObject();
+			cJSON_AddStringToObject(source, "name", fname);
+			char *path = dbg_info_source_path(dbg_info, file);
+			cJSON_AddStringToObject(source, "path", path);
+			free(path);
+			cJSON_AddNumberToObject(source, "sourceReference", 0);
+			cJSON_AddItemToObjectCS(frame, "source", source);
+		} else {
+			cJSON_AddNumberToObject(frame, "line", 0);
+		}
 		cJSON_AddNumberToObject(frame, "column", 0);
 	}
 	send_response(resp, true);
@@ -451,6 +473,78 @@ static void cmd_variables(cJSON *args, cJSON *resp)
 	send_response(resp, true);
 }
 
+void delete_breakpoints_in_page(struct breakpoint *bp, int addr, void *file_)
+{
+	int file = *(int *)file_;
+	int f;
+	if (dbg_info_addr2line(dbg_info, addr, &f, NULL) && f == file) {
+		dbg_clear_breakpoint(addr, NULL);
+	}
+}
+
+static void cmd_setBreakpoints(cJSON *args, cJSON *resp)
+{
+	if (!dbg_info) {
+		cJSON_AddStringToObject(resp, "message", "no debug info available");
+		send_response(resp, false);
+		return;
+	}
+	cJSON *source = cJSON_GetObjectItemCaseSensitive(args, "source");
+	cJSON *source_name = cJSON_GetObjectItemCaseSensitive(source, "name");
+	cJSON *in_bps = cJSON_GetObjectItemCaseSensitive(args, "breakpoints");
+	if (!cJSON_IsString(source_name) || !cJSON_IsArray(in_bps)) {
+		cJSON_AddStringToObject(resp, "message", "invalid arguments");
+		send_response(resp, false);
+		return;
+	}
+	const char *filename = source_name->valuestring;
+	int file = dbg_info_find_file(dbg_info, filename);  // FIXME: find by path
+	if (file < 0) {
+		cJSON_AddStringToObject(resp, "message", "no such file");
+		send_response(resp, false);
+		return;
+	}
+
+	dbg_foreach_breakpoint(delete_breakpoints_in_page, &file);
+
+	cJSON *body, *out_bps;
+	cJSON_AddItemToObjectCS(resp, "body", body = cJSON_CreateObject());
+	cJSON_AddItemToObjectCS(body, "breakpoints", out_bps = cJSON_CreateArray());
+
+	char message[256];
+	cJSON *srcbp;
+	cJSON_ArrayForEach(srcbp, in_bps) {
+		cJSON *item = cJSON_CreateObject();
+		cJSON_AddItemToArray(out_bps, item);
+
+		cJSON *line = cJSON_GetObjectItemCaseSensitive(srcbp, "line");
+		int line_no = line->valueint;
+		int addr = dbg_info_line2addr(dbg_info, file, line_no);
+		if (addr < 0) {
+			snprintf(message, sizeof(message), "no line %d in file %s", line_no, filename);
+			cJSON_AddBoolToObject(item, "verified", false);
+			cJSON_AddStringToObject(item, "message", message);
+			continue;
+		}
+		bool verified = dbg_set_address_breakpoint(addr, NULL, NULL);
+		if (!verified) {
+			snprintf(message, sizeof(message), "failed to set breakpoint at 0x%x", addr);
+			cJSON_AddBoolToObject(item, "verified", false);
+			cJSON_AddStringToObject(item, "message", message);
+			continue;
+		}
+
+		dbg_info_addr2line(dbg_info, addr, NULL, &line_no);
+		cJSON_AddNumberToObject(item, "id", addr);
+		cJSON_AddBoolToObject(item, "verified", true);
+		// TODO
+		// cJSON_AddItemToObjectCS(item, "source", create_source(filename));
+		cJSON_AddNumberToObject(item, "line", line_no);
+	}
+
+	send_response(resp, true);
+}
+
 static void cmd_setInstructionBreakpoints(cJSON *args, cJSON *resp)
 {
 	static uint32_t *old_breakpoints = NULL;
@@ -553,6 +647,8 @@ static void cmd_continue(cJSON *args, cJSON *resp)
 {
 	send_response(resp, true);
 
+	stepping = NOT_STEPPING;
+	stepping_file = stepping_line = 0;
 	dap_state = DAP_RUNNING;
 	dbg_continue();
 }
@@ -574,10 +670,15 @@ static void cmd_pause(cJSON *args, cJSON *resp)
 
 static void cmd_stepIn(cJSON *args, cJSON *resp)
 {
+	stepping_file = stepping_line = 0;
+	if (dbg_info)
+		dbg_info_addr2line(dbg_info, instr_ptr, &stepping_file, &stepping_line);
+
 	dbg_set_step_into_breakpoint();
 	send_response(resp, true);
 
 	dap_state = DAP_RUNNING;
+	stepping = STEPPING_INTO;
 	dbg_continue();
 }
 
@@ -587,15 +688,21 @@ static void cmd_stepOut(cJSON *args, cJSON *resp)
 	send_response(resp, true);
 
 	dap_state = DAP_RUNNING;
+	stepping = STEPPING_FINISH;
 	dbg_continue();
 }
 
 static void cmd_next(cJSON *args, cJSON *resp)
 {
+	stepping_file = stepping_line = 0;
+	if (dbg_info)
+		dbg_info_addr2line(dbg_info, instr_ptr, &stepping_file, &stepping_line);
+
 	dbg_set_step_over_breakpoint();
 	send_response(resp, true);
 
 	dap_state = DAP_RUNNING;
+	stepping = STEPPING_OVER;
 	dbg_continue();
 }
 
@@ -797,6 +904,7 @@ static struct {
 	{ "next", cmd_next, false },
 	{ "pause", cmd_pause, true },
 	{ "evaluate", cmd_evaluate, true },
+	{ "setBreakpoints", cmd_setBreakpoints, true },
 	{ "setInstructionBreakpoints", cmd_setInstructionBreakpoints, true },
 	{ "threads", cmd_threads, true },
 	{ "scopes", cmd_scopes, true },
@@ -905,6 +1013,22 @@ void dbg_dap_quit(void)
 
 void dbg_dap_repl(struct dbg_stop *stop)
 {
+	if (stepping) {
+		if (stepping_line) {
+			int file, line;
+			dbg_info_addr2line(dbg_info, instr_ptr, &file, &line);
+			if (file == stepping_file && line == stepping_line) {
+				if (stepping == STEPPING_INTO)
+					dbg_set_step_into_breakpoint();
+				else if (stepping == STEPPING_OVER)
+					dbg_set_step_over_breakpoint();
+				dbg_continue();
+			}
+		}
+		stepping = NOT_STEPPING;
+		stepping_file = stepping_line = 0;
+	}
+
 	emit_stopped_event(stop);
 	dap_state = DAP_STOPPED;
 
