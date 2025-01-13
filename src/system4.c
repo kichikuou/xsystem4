@@ -65,7 +65,7 @@ struct config config = {
 	.echo = false,
 	.text_x_scale = 1.0,
 	.manual_text_x_scale = false,
-	.rsm_save = false,
+	.save_format = SAVE_FORMAT_RSM,
 	.msgskip_delay = 0,
 
 	.bgi_path = NULL,
@@ -193,9 +193,9 @@ static void read_user_config_file(const char *path)
 			config.save_dir = xstrdup(ini_string(&ini[i])->text);
 		} else if (!strcmp(ini[i].name->text, "save-format")) {
 			if (!strcmp(ini_string(&ini[i])->text, "json")) {
-				config.rsm_save = false;
+				config.save_format = SAVE_FORMAT_JSON;
 			} else if (!strcmp(ini_string(&ini[i])->text, "rsm")) {
-				config.rsm_save = true;
+				config.save_format = SAVE_FORMAT_RSM;
 			} else {
 				WARNING("Invalid value for save-format in config: \"%s\"",
 						ini_string(&ini[i])->text);
@@ -383,6 +383,7 @@ static void usage(void)
 #ifdef DEBUGGER_ENABLED
 	puts("        --nodebug        Disable debugger");
 	puts("        --debug          Start in debugger");
+	puts("        --debug-info     Specify the path to the debug information file");
 #endif
 }
 
@@ -414,6 +415,7 @@ enum {
 	LOPT_NODEBUG,
 	LOPT_DEBUG,
 	LOPT_DEBUG_API,
+	LOPT_DEBUG_INFO,
 #endif
 };
 
@@ -446,6 +448,7 @@ int main(int argc, char *argv[])
 	char *font_fnl = NULL;
 	char *joypad = NULL;
 	char *savedir = NULL;
+	char *debug_info_path = NULL;
 
 	while (1) {
 		static struct option long_options[] = {
@@ -465,6 +468,7 @@ int main(int argc, char *argv[])
 			{ "nodebug",       no_argument,       0, LOPT_NODEBUG },
 			{ "debug",         no_argument,       0, LOPT_DEBUG },
 			{ "debug-api",     no_argument,       0, LOPT_DEBUG_API },
+			{ "debug-info",    required_argument, 0, LOPT_DEBUG_INFO },
 #endif
 			{ 0 }
 		};
@@ -524,9 +528,9 @@ int main(int argc, char *argv[])
 			break;
 		case LOPT_SAVE_FORMAT:
 			if (!strcmp(optarg, "json")) {
-				config.rsm_save = false;
+				config.save_format = SAVE_FORMAT_JSON;
 			} else if (!strcmp(optarg, "rsm")) {
-				config.rsm_save = true;
+				config.save_format = SAVE_FORMAT_RSM;
 			} else {
 				WARNING("Invalid value for --save-format option: \"%s\"", optarg);
 			}
@@ -541,6 +545,9 @@ int main(int argc, char *argv[])
 		case LOPT_DEBUG_API:
 			dbg_dap = true;
 			sys_silent = true;
+			break;
+		case LOPT_DEBUG_INFO:
+			debug_info_path = optarg;
 			break;
 #endif
 		}
@@ -606,6 +613,6 @@ int main(int argc, char *argv[])
 	if (config.msgskip_delay)
 		set_msgskip_delay(ain, config.msgskip_delay);
 	asset_manager_init();
-	dbg_init();
+	dbg_init(debug_info_path);
 	sys_exit(vm_execute_ain(ain));
 }

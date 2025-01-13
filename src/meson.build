@@ -87,6 +87,7 @@ xsystem4 = [version_h,
             'hll/Data.c',
             'hll/DataFile.c',
             'hll/DrawDungeon.c',
+            'hll/DrawEffect.c',
             'hll/DrawGraph.c',
             'hll/DrawMovie.c',
             'hll/DrawPluginManager.c',
@@ -185,6 +186,7 @@ endif
 if get_option('debugger').allowed()
     add_project_arguments('-DDEBUGGER_ENABLED', language : 'c')
     xsystem4 += 'debug.c'
+    xsystem4 += 'debug_info.c'
     xsystem4 += 'debugger_cmd.c'
     xsystem4 += 'debugger_dap.c'
     if chibi.found()
