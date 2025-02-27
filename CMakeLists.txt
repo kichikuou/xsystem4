@@ -4,8 +4,6 @@ cmake_minimum_required(VERSION 3.14)
 project(xsystem4 LANGUAGES C)
 set(CMAKE_C_STANDARD 11)
 
-option(ENABLE_JSPI "Enable JSPI" OFF)
-
 function(add_emscripten_port name)
   add_library(${name} INTERFACE)
   set_target_properties(${name} PROPERTIES
@@ -66,7 +64,6 @@ include_directories(${CMAKE_CURRENT_BINARY_DIR})
 
 target_sources(xsystem4 PRIVATE
   ${CMAKE_CURRENT_BINARY_DIR}/hll_signatures.h
-  src/archive_emscripten.c
   src/audio.c
   src/audio_meta.c
   src/audio_mixer.c
@@ -238,25 +235,13 @@ target_link_options(xsystem4 PRIVATE
   -sALLOW_MEMORY_GROWTH=1
   -sWASM_WORKERS=1
   -sAUDIO_WORKLET=1
+  -sPROXY_TO_PTHREAD=1
+  -sOFFSCREEN_FRAMEBUFFER=1
   -sEXPORTED_RUNTIME_METHODS=FS,ENV
   -sEXPORTED_FUNCTIONS=_main,_malloc,_vm_stack_trace
   --embed-file=${CMAKE_CURRENT_LIST_DIR}/shaders@/shaders
   --emit-tsd=xsystem4.d.ts
 )
-
-if (ENABLE_JSPI)
-  target_link_options(xsystem4 PRIVATE
-    -sASYNCIFY=2
-    -sSUPPORT_LONGJMP=wasm
-  )
-else()
-  target_link_options(xsystem4 PRIVATE
-    -sASYNCIFY=1
-    -sASYNCIFY_STACK_SIZE=8192
-  )
-  # Without optimizations, Asyncify generates very large code.
-  list(APPEND CMAKE_EXE_LINKER_FLAGS_DEBUG "-O1")
-endif()
 
 target_compile_options(xsystem4 PRIVATE -Wno-unused-parameter)
 

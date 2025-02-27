@@ -30,18 +30,21 @@
 
 #ifdef __EMSCRIPTEN__
 
-EM_JS(void, InputString_ClearResultString, (void), {
-	Module.shell.input.ClearResultString();
-});
+static void InputString_ClearResultString(void)
+{
+	MAIN_THREAD_EM_ASM({
+		Module.shell.input.ClearResultString();
+	});
+}
 
 static struct string *InputString_GetResultString(void)
 {
-	char *utf8 = EM_ASM_PTR({
+	char *utf8 = MAIN_THREAD_EM_ASM_PTR({
 		const s = Module.shell.input.GetResultString();
 		return s ? stringToNewUTF8(s) : 0;
 	});
 	if (!utf8)
-		string_ref(&EMPTY_STRING);
+		return string_ref(&EMPTY_STRING);
 	char *sjis = utf2sjis(utf8, 0);
 	struct string *str = cstr_to_string(sjis);
 	free(sjis);
@@ -52,31 +55,43 @@ static struct string *InputString_GetResultString(void)
 static void InputString_SetFont(int size, struct string *name, int weight)
 {
 	char *font_name = sjis2utf(name->text, name->size);
-	EM_ASM({
+	MAIN_THREAD_EM_ASM({
 		Module.shell.input.SetFont($0, UTF8ToString($1), $2);
 	}, size, font_name, weight);
 	free(font_name);
 }
 
-EM_JS(void, InputString_SetPos, (int x, int y), {
-	Module.shell.input.SetPos(x, y);
-});
+static void InputString_SetPos(int x, int y)
+{
+	MAIN_THREAD_EM_ASM({
+		Module.shell.input.SetPos($0, $1);
+	}, x, y);
+}
 
-EM_JS(void, InputString_Begin, (void), {
-	Module.shell.input.Begin();
-});
+static void InputString_Begin(void)
+{
+	MAIN_THREAD_EM_ASM({
+		Module.shell.input.Begin();
+	});
+}
 
-EM_JS(void, InputString_End, (void), {
-	Module.shell.input.End();
-});
+static void InputString_End(void)
+{
+	MAIN_THREAD_EM_ASM({
+		Module.shell.input.End();
+	});
+}
 
-EM_JS(void, handle_input, (const char *text), {
-	Module.shell.input.addText(UTF8ToString(text));
-});
+static void handle_input(const char *text)
+{
+	MAIN_THREAD_EM_ASM({
+		Module.shell.input.addText(UTF8ToString($0));
+	}, text);
+}
 
 static void InputString_OpenIME(void)
 {
-	EM_ASM({ Module.shell.input.OpenIME(); });
+	MAIN_THREAD_EM_ASM({ Module.shell.input.OpenIME(); });
 	// Also enable SDL's text input mode, otherwise we won't be able to get
 	// input that isn't via IME.
 	register_input_handler(handle_input);
@@ -85,7 +100,7 @@ static void InputString_OpenIME(void)
 
 static void InputString_CloseIME(void)
 {
-	EM_ASM({ Module.shell.input.CloseIME(); });
+	MAIN_THREAD_EM_ASM({ Module.shell.input.CloseIME(); });
 	SDL_StopTextInput();
 	clear_input_handler();
 }

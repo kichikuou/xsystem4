@@ -520,7 +520,7 @@ static void system_call(enum syscall_code code)
 		struct string *str = stack_peek_string(0);
 		char *utf = sjis2utf(str->text, str->size);
 #ifdef __EMSCRIPTEN__
-		result = EM_ASM_INT({ return window.confirm(UTF8ToString($0)); }, utf);
+		result = MAIN_THREAD_EM_ASM_INT({ return window.confirm(UTF8ToString($0)); }, utf);
 #else
 		const SDL_MessageBoxData mbox = {
 			SDL_MESSAGEBOX_INFORMATION,

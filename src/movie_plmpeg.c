@@ -63,8 +63,7 @@ static void acquire_lock_audio_thread(lock_t *lock)
 
 static void acquire_lock_main_thread(lock_t *lock)
 {
-	while (!emscripten_lock_try_acquire(lock))
-		emscripten_sleep(0);
+	emscripten_lock_waitinf_acquire(lock);
 }
 
 static void release_lock(lock_t *lock)
@@ -194,17 +193,6 @@ struct movie_context *movie_load(const char *filename)
 		movie_free(mc);
 		return NULL;
 	}
-#ifdef __EMSCRIPTEN__
-	size_t len;
-	void *data = load_nonresident_file(path, &len);
-	if (!data) {
-		WARNING("Cannot read %s", path);
-		free(path);
-		movie_free(mc);
-		return NULL;
-	}
-	mc->plm = plm_create_with_memory(data, len, TRUE);
-#else
 	FILE *fp = file_open_utf8(path, "rb");
 	if (!fp) {
 		WARNING("%s: %s", path, strerror(errno));
@@ -213,7 +201,6 @@ struct movie_context *movie_load(const char *filename)
 		return NULL;
 	}
 	mc->plm = plm_create_with_file(fp, TRUE);
-#endif
 	if (!plm_has_headers(mc->plm)) {
 		WARNING("%s: not a MPEG-PS file", path);
 		free(path);

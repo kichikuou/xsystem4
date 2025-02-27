@@ -23,6 +23,7 @@
 #include <limits.h>
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
+#include <emscripten/html5.h>
 #endif
 
 #include "system4.h"
@@ -178,7 +179,7 @@ static void set_window_title(void)
 {
 #ifdef __EMSCRIPTEN__
 	char *game_name = sjis2utf(config.game_name, 0);
-	EM_ASM({ return Module.shell.set_title(UTF8ToString($0)); }, game_name);
+	MAIN_THREAD_EM_ASM({ return Module.shell.set_title(UTF8ToString($0)); }, game_name);
 	free(game_name);
 #else
 	char title[1024] = { [1023] = 0 };
@@ -445,6 +446,9 @@ void gfx_swap(void)
 	};
 	gfx_render(&job);
 
+#ifdef __EMSCRIPTEN__
+	emscripten_webgl_commit_frame();
+#endif
 	SDL_GL_SwapWindow(sdl.window);
 	glBindFramebuffer(GL_FRAMEBUFFER, main_surface_fb);
 	glViewport(0, 0, sdl.w, sdl.h);

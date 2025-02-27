@@ -20,6 +20,8 @@
 #include <sndfile.h>
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
+#include <emscripten/proxying.h>
+#include <emscripten/threading.h>
 #include <emscripten/wasm_worker.h>
 #include <emscripten/webaudio.h>
 #else
@@ -112,8 +114,7 @@ emscripten_lock_t mixer_lock = EMSCRIPTEN_LOCK_T_STATIC_INITIALIZER;
 
 static void lock_mixer(void)
 {
-	while (!emscripten_lock_try_acquire(&mixer_lock))
-		emscripten_sleep(0);
+	emscripten_lock_waitinf_acquire(&mixer_lock);
 }
 
 static void unlock_mixer(void)
@@ -181,12 +182,12 @@ static void aw_initialized(EMSCRIPTEN_WEBAUDIO_T audio_context, EM_BOOL success,
 
 static void audio_device_init(int *sample_rate)
 {
-	*sample_rate = EM_ASM_INT({
+	*sample_rate = MAIN_THREAD_EM_ASM_INT({
 		return Module.shell.get_audio_dest_node().context.sampleRate;
 	});
 }
 
-static void audio_device_start(void)
+static void audio_device_start_mainthread(possibly_unused void *data)
 {
 	static uint8_t aw_stack[32 * 1024];
 	EMSCRIPTEN_WEBAUDIO_T context = EM_ASM_INT({
@@ -195,6 +196,12 @@ static void audio_device_start(void)
 	});
 	emscripten_start_wasm_audio_worklet_thread_async(
 		context, aw_stack, sizeof(aw_stack), aw_initialized, 0);
+}
+
+static void audio_device_start(void)
+{
+	em_proxying_queue *q = emscripten_proxy_get_system_queue();
+	emscripten_proxy_async(q, emscripten_main_runtime_thread_id(), &audio_device_start_mainthread, NULL);
 }
 
 EM_JS_DEPS(xsys4_audio_deps, "$emscriptenRegisterAudioObject,$emscriptenGetAudioObject");

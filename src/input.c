@@ -248,7 +248,7 @@ static void mouse_event(SDL_MouseButtonEvent *e)
 		// Right-click outside the viewport opens the system menu.
 		SDL_Point p = { .x = e->x, .y = e->y };
 		if (!SDL_PointInRect(&p, &sdl.viewport)) {
-			EM_ASM({ Module.shell.open_system_menu(); });
+			MAIN_THREAD_EM_ASM({ Module.shell.open_system_menu(); });
 		}
 	}
 #endif
@@ -548,7 +548,7 @@ static void fire_deferred_events(void)
 		} else {
 #ifdef __EMSCRIPTEN__
 			// Long touch outside the viewport opens the system menu.
-			EM_ASM({ Module.shell.open_system_menu(); });
+			MAIN_THREAD_EM_ASM({ Module.shell.open_system_menu(); });
 #endif
 			long_touch_start_timestamp = 0;
 		}
@@ -621,8 +621,8 @@ void handle_events(void)
 	{
 		static int cnt;
 		if (++cnt == 10) {
-			// Yield to the browser to prevent the page from freezing.
-			emscripten_sleep(0);
+			// Yield to the event queue.
+			SDL_Delay(4);
 			cnt = 0;
 		}
 	}
@@ -659,7 +659,7 @@ void handle_events(void)
 #else
 #ifdef __EMSCRIPTEN__
 			// Ignore key events during IME composition
-			if (EM_ASM_INT({ return Module.shell.input.isCompsiting(); }))
+			if (MAIN_THREAD_EM_ASM_INT({ return Module.shell.input.isCompsiting(); }))
 				break;
 #endif
 			key_event(&e.key, e.type == SDL_KEYDOWN);

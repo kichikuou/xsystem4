@@ -277,7 +277,7 @@ static void config_init(void)
 		config.game_name = strdup(config.ain_filename);
 
 #ifdef __EMSCRIPTEN__
-	EM_ASM({ Module.shell.init_save(UTF8ToString($0), UTF8ToString($1)); },
+	MAIN_THREAD_EM_ASM({ Module.shell.init_save(UTF8ToString($0), UTF8ToString($1)); },
 		display_sjis0(config.game_name), display_sjis1(config.save_dir));
 #endif
 
@@ -425,9 +425,11 @@ static void error_handler(const char *msg)
 }
 
 #ifdef __EMSCRIPTEN__
-EM_JS(void, emscripten_error_handler, (const char *msg), {
-	Module.shell.on_error(UTF8ToString(msg));
-});
+void emscripten_error_handler(const char *msg) {
+	MAIN_THREAD_EM_ASM({
+		Module.shell.on_error(UTF8ToString($0));
+	}, msg);
+}
 #endif
 
 int main(int argc, char *argv[])
