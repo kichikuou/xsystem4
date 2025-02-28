@@ -15,7 +15,6 @@ endfunction()
 add_emscripten_port(zlib)
 add_emscripten_port(libpng)
 add_emscripten_port(freetype)
-add_emscripten_port(sdl2)
 
 add_library(GLESv3 INTERFACE)
 set_target_properties(GLESv3 PROPERTIES
@@ -30,7 +29,13 @@ FetchContent_Declare(
 )
 set(CGLM_STATIC ON CACHE BOOL "Static build" FORCE)
 set(CGLM_SHARED OFF CACHE BOOL "Shared build" FORCE)
-FetchContent_MakeAvailable(cglm)
+FetchContent_Declare(
+  SDL
+  GIT_REPOSITORY https://github.com/kichikuou/SDL.git
+  GIT_TAG 68d5289e08b63eb0de41373e8d090e9789b7b346
+)
+option(SDL_PTHREADS "Use POSIX threads for multi-threading" ON)
+FetchContent_MakeAvailable(cglm SDL)
 
 find_package(SndFile REQUIRED)
 
@@ -224,7 +229,7 @@ target_sources(xsystem4 PRIVATE
   )
 
 target_link_libraries(xsystem4 PRIVATE
-  m zlib sdl2 freetype GLESv3 cglm SndFile::sndfile sys4 idbfs.js)
+  m zlib SDL2::SDL2 freetype GLESv3 cglm SndFile::sndfile sys4 idbfs.js)
 
 target_link_options(xsystem4 PRIVATE
   -sENVIRONMENT=web,worker
