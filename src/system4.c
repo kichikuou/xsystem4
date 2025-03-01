@@ -26,6 +26,7 @@
 #include <limits.h>
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
+#include <emscripten/wasmfs.h>
 #endif
 
 #include "system4.h"
@@ -276,11 +277,6 @@ static void config_init(void)
 	if (!config.game_name)
 		config.game_name = strdup(config.ain_filename);
 
-#ifdef __EMSCRIPTEN__
-	MAIN_THREAD_EM_ASM({ Module.shell.init_save(UTF8ToString($0), UTF8ToString($1)); },
-		display_sjis0(config.game_name), display_sjis1(config.save_dir));
-#endif
-
 	char *new_save_dir = get_save_path(config.save_dir);
 	free(config.save_dir);
 	config.save_dir = new_save_dir;
@@ -430,12 +426,19 @@ void emscripten_error_handler(const char *msg) {
 		Module.shell.on_error(UTF8ToString($0));
 	}, msg);
 }
+
+void init_filesystem(void) {
+	backend_t wasmfs_backend = wasmfs_create_opfs_backend();
+	wasmfs_create_directory("/opfs", 0777, wasmfs_backend);
+	MAIN_THREAD_EM_ASM({ Module.shell.init_filesystem(); });
+}
 #endif
 
 int main(int argc, char *argv[])
 {
 #ifdef __EMSCRIPTEN__
 	sys_error_handler = emscripten_error_handler;
+	init_filesystem();
 #else
 	sys_error_handler = error_handler;
 #endif

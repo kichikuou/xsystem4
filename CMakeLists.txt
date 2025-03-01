@@ -226,7 +226,7 @@ target_sources(xsystem4 PRIVATE
   )
 
 target_link_libraries(xsystem4 PRIVATE
-  m zlib SDL2::SDL2 freetype GLESv3 cglm SndFile::sndfile sys4 idbfs.js)
+  m zlib SDL2::SDL2 freetype GLESv3 cglm SndFile::sndfile sys4)
 
 target_link_options(xsystem4 PRIVATE
   -sENVIRONMENT=web,worker
@@ -237,6 +237,7 @@ target_link_options(xsystem4 PRIVATE
   -sAUDIO_WORKLET=1
   -sPROXY_TO_PTHREAD=1
   -sOFFSCREEN_FRAMEBUFFER=1
+  -sWASMFS=1
   -sEXPORTED_RUNTIME_METHODS=FS,ENV
   -sEXPORTED_FUNCTIONS=_main,_malloc,_vm_stack_trace
   --embed-file=${CMAKE_CURRENT_LIST_DIR}/shaders@/shaders
