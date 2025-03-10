@@ -18,7 +18,7 @@
 
 #include <stdlib.h>
 #include <string.h>
-
+#include <ffi.h>
 #include "system4/ain.h"
 #include "system4/utfsjis.h"
 #include "vm.h"
@@ -26,27 +26,14 @@
 #include "vm/page.h"
 #include "xsystem4.h"
 
-#ifdef __EMSCRIPTEN__
-#include <emscripten.h>
-#endif
-#ifdef HAVE_LIBFFI
-#include <ffi.h>
-#else
-#include "hll_signatures.h"
-#endif
-
 #define HLL_MAX_ARGS 64
 
 struct hll_function {
 	void *fun;
-	unsigned int nr_args;
-#ifdef HAVE_LIBFFI
 	ffi_cif cif;
+	unsigned int nr_args;
 	ffi_type **args;
 	ffi_type *return_type;
-#else
-	enum hll_signature cif;
-#endif
 };
 
 static struct hll_function **libraries = NULL;
@@ -624,8 +611,6 @@ static struct static_library *static_libraries[] = {
 	NULL
 };
 
-#ifdef HAVE_LIBFFI
-
 static ffi_type *ain_to_ffi_type(enum ain_data_type type)
 {
 	switch (type) {
@@ -665,65 +650,6 @@ static void link_static_library_function(struct hll_function *dst, struct ain_hl
 	if (ffi_prep_cif(&dst->cif, FFI_DEFAULT_ABI, dst->nr_args, dst->return_type, dst->args) != FFI_OK)
 		ERROR("Failed to link HLL function");
 }
-
-#else // HAVE_LIBFFI
-
-static char ain_to_ffi_type(enum ain_data_type type)
-{
-	switch (type) {
-	case AIN_VOID:
-		return 'v';
-	case AIN_INT:
-	case AIN_BOOL:
-		return 'i';
-	case AIN_LONG_INT:
-		return 'l';
-	case AIN_FLOAT:
-		return 'f';
-	case AIN_STRING:
-	case AIN_STRUCT:
-	case AIN_FUNC_TYPE:
-	case AIN_DELEGATE:
-	case AIN_ARRAY_TYPE:
-	case AIN_REF_TYPE:
-	case AIN_IMAIN_SYSTEM: // ???
-		return 'p';
-	default:
-		ERROR("Unhandled type in HLL function: %s", ain_strtype(ain, type, -1));
-	}
-}
-
-static void calc_hll_signature(struct ain_hll_function *fun, char *p)
-{
-	*p++ = ain_to_ffi_type(fun->return_type.data);
-	for (unsigned int i = 0; i < fun->nr_arguments; i++) {
-		*p++ = ain_to_ffi_type(fun->arguments[i].type.data);
-	}
-	*p = '\0';
-}
-
-static void link_static_library_function(struct hll_function *dst, struct ain_hll_function *src, void *funcptr)
-{
-	dst->fun = funcptr;
-	dst->nr_args = src->nr_arguments;
-
-	char sig[HLL_MAX_ARGS + 2];
-	calc_hll_signature(src, sig);
-
-	const struct signature_table *t = hll_signatures;
-	for (; t->key; t++) {
-		if (!strcmp(t->key, sig)) {
-			dst->cif = t->val;
-			break;
-		}
-	}
-	if (!t->key) {
-		dst->cif = HLL_SIG_UNSUPPORTED;
-		WARNING("%s: unsupported HLL signature: %s", src->name, sig);
-	}
-}
-
-#endif // HAVE_LIBFFI
 
 /*
  * "Link" a library that has been compiled into the xsystem4 executable.
@@ -815,34 +741,3 @@ void static_library_replace(struct static_library *lib, const char *name, void *
 	}
 	ERROR("No library function '%s.%s'", lib->name, name);
 }
-
-#ifdef __EMSCRIPTEN__
-
-EM_ASYNC_JS(bool, init_hll_validator, (), {
-	return Module.shell.init_hll_validator();
-});
-
-EM_JS(void, validate_hll_signature, (const char *lib, const char *name, void *fun, const char *sig), {
-	Module.shell.validate_hll_signature(UTF8ToString(lib), UTF8ToString(name), fun, UTF8ToString(sig));
-});
-
-void validate_libraries(void)
-{
-	if (!init_hll_validator())
-		return;
-
-	for (int libno = 0; libno < ain->nr_libraries; libno++) {
-		if (!libraries[libno]) continue;
-		struct ain_library *lib = &ain->libraries[libno];
-		for (int fno = 0; fno < lib->nr_functions; fno++) {
-			struct ain_hll_function *a = &lib->functions[fno];
-			struct hll_function *h = &libraries[libno][fno];
-			if (!h->fun) continue;
-			char sig[HLL_MAX_ARGS + 2];
-			calc_hll_signature(a, sig);
-			validate_hll_signature(lib->name, a->name, h->fun, sig);
-		}
-	}
-}
-
-#endif
