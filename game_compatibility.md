@@ -59,7 +59,7 @@ issues, please let me know or open a pull request to update this table.
 | エドランゼ ～Come on!水戸姫様～                         | Supported   |       |
 | 闘神都市III                                             | Supported   |       |
 | ばにしゅ！～おっぱいの消えた王国～                      | Unknown     |       |
-| 僕だけの保健室                                          | Unknown     |       |
+| 僕だけの保健室                                          | Supported   |       |
 | ももいろガーディアン                                    | Unknown     |       |
 | 超昂閃忍ハルカ ハルカVSエスカレイヤー                   | Unknown     | From Alice 2010 |
 | 超昂閃忍ハルカ ―疾風！？忍者大作戦―                     | Unknown     | From Alice 2010 |
@@ -73,7 +73,7 @@ issues, please let me know or open a pull request to update this table.
 | Rance 02 -The Rebellious Maidens- (Fan TL)              | Supported   |       |
 | Rance 02 -The Rebellious Maidens- (MangaGamer)          | Supported   |       |
 | しゃーまんず・さんくちゅあり－巫女の聖域－              | Unknown     |       |
-| 大帝国                                                  | Unknown     |       |
+| 大帝国                                                  | Supported   |       |
 | ランス・クエスト                                        | Unsupported |       |
 | 母娘乱館                                                | Unknown     |       |
 | パステルチャイム3 バインドシーカー                      | Unsupported |       |
