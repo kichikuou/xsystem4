@@ -11,7 +11,6 @@ function(add_emscripten_port name)
       INTERFACE_LINK_OPTIONS "--use-port=${name}")
 endfunction()
 add_emscripten_port(zlib)
-add_emscripten_port(libpng)
 add_emscripten_port(freetype)
 
 add_library(GLESv3 INTERFACE)
@@ -41,6 +40,7 @@ set_target_properties(ffi PROPERTIES
   INTERFACE_INCLUDE_DIRECTORIES ${CMAKE_STAGING_PREFIX}/include)
 
 find_package(SndFile REQUIRED)
+find_package(PNG REQUIRED)
 
 add_subdirectory(subprojects/libsys4)
 
@@ -225,7 +225,7 @@ target_sources(xsystem4 PRIVATE
   )
 
 target_link_libraries(xsystem4 PRIVATE
-  m zlib SDL2::SDL2 freetype ffi GLESv3 cglm SndFile::sndfile sys4)
+  m zlib SDL2::SDL2 freetype ffi GLESv3 cglm SndFile::sndfile sys4 PNG::PNG)
 
 target_link_options(xsystem4 PRIVATE
   -sENVIRONMENT=web,worker
