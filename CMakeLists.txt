@@ -28,7 +28,6 @@ find_package(Freetype REQUIRED)
 find_package(SDL2 REQUIRED)
 find_package(SndFile REQUIRED)
 find_package(ZLIB REQUIRED)
-find_package(PNG REQUIRED)
 
 add_subdirectory(subprojects/libsys4)
 
@@ -212,7 +211,7 @@ target_sources(xsystem4 PRIVATE
   )
 
 target_link_libraries(xsystem4 PRIVATE
-  m ZLIB::ZLIB SDL2::SDL2 Freetype::Freetype ffi GLESv3 cglm SndFile::sndfile sys4 PNG::PNG)
+  m ZLIB::ZLIB SDL2::SDL2 Freetype::Freetype ffi GLESv3 cglm SndFile::sndfile sys4)
 
 target_link_options(xsystem4 PRIVATE
   -sENVIRONMENT=web,worker
