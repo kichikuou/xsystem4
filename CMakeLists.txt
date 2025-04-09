@@ -4,15 +4,6 @@ cmake_minimum_required(VERSION 3.14)
 project(xsystem4 LANGUAGES C)
 set(CMAKE_C_STANDARD 11)
 
-function(add_emscripten_port name)
-  add_library(${name} INTERFACE)
-  set_target_properties(${name} PROPERTIES
-      INTERFACE_COMPILE_OPTIONS "--use-port=${name}"
-      INTERFACE_LINK_OPTIONS "--use-port=${name}")
-endfunction()
-add_emscripten_port(zlib)
-add_emscripten_port(freetype)
-
 add_library(GLESv3 INTERFACE)
 set_target_properties(GLESv3 PROPERTIES
     INTERFACE_LINK_OPTIONS -sMIN_WEBGL_VERSION=2)
@@ -26,20 +17,17 @@ FetchContent_Declare(
 )
 set(CGLM_STATIC ON CACHE BOOL "Static build" FORCE)
 set(CGLM_SHARED OFF CACHE BOOL "Shared build" FORCE)
-FetchContent_Declare(
-  SDL
-  GIT_REPOSITORY https://github.com/kichikuou/SDL.git
-  GIT_TAG 68d5289e08b63eb0de41373e8d090e9789b7b346
-)
-option(SDL_PTHREADS "Use POSIX threads for multi-threading" ON)
-FetchContent_MakeAvailable(cglm SDL)
+FetchContent_MakeAvailable(cglm)
 
 add_library(ffi STATIC IMPORTED)
 set_target_properties(ffi PROPERTIES
   IMPORTED_LOCATION ${CMAKE_STAGING_PREFIX}/lib/libffi.a
   INTERFACE_INCLUDE_DIRECTORIES ${CMAKE_STAGING_PREFIX}/include)
 
+find_package(Freetype REQUIRED)
+find_package(SDL2 REQUIRED)
 find_package(SndFile REQUIRED)
+find_package(ZLIB REQUIRED)
 find_package(PNG REQUIRED)
 
 add_subdirectory(subprojects/libsys4)
@@ -59,7 +47,6 @@ execute_process(
   OUTPUT_VARIABLE VCS_TAG
   OUTPUT_STRIP_TRAILING_WHITESPACE)
 configure_file(src/version.h.in version.h)
-
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 
 target_sources(xsystem4 PRIVATE
@@ -225,7 +212,7 @@ target_sources(xsystem4 PRIVATE
   )
 
 target_link_libraries(xsystem4 PRIVATE
-  m zlib SDL2::SDL2 freetype ffi GLESv3 cglm SndFile::sndfile sys4 PNG::PNG)
+  m ZLIB::ZLIB SDL2::SDL2 Freetype::Freetype ffi GLESv3 cglm SndFile::sndfile sys4 PNG::PNG)
 
 target_link_options(xsystem4 PRIVATE
   -sENVIRONMENT=web,worker
