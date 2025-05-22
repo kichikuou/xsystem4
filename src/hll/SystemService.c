@@ -19,6 +19,7 @@
 
 #include "system4/ain.h"
 #include "system4/string.h"
+#include "system4/utfsjis.h"
 
 #include "cJSON.h"
 #include "input.h"
@@ -257,7 +258,9 @@ static bool SystemService_GetMouseCursorConfig(int type, int *value)
 
 void SystemService_GetGameFolderPath(struct string **folder_path)
 {
-	*folder_path = make_string(config.game_dir, strlen(config.game_dir));
+	char *sjis = utf2sjis(config.game_dir, 0);
+	*folder_path = make_string(sjis, strlen(sjis));
+	free(sjis);
 }
 
 static void SystemService_GetTime(int *hour, int *min, int *sec)
@@ -292,9 +295,19 @@ static void SystemService_Rance0123456789(struct string **text)
 	*text = cstr_to_string("-RANCE010ECNAR-"); // ???
 }
 
+static void SystemService_XXXXX01XXXXXXXX(struct string **text)
+{
+	*text = cstr_to_string("RANCE01RANCEKAKKOII");
+}
+
 static void SystemService_Test(struct string **text)
 {
 	*text = cstr_to_string("DELETE ALL 758490275489207548093");
+}
+
+static void SystemService_DRPKT(struct string **text)
+{
+	*text = cstr_to_string("DRPKT QWERTY NUFUAUEO 75849027582754829");
 }
 
 static void SystemService_PreLink(void);
@@ -347,7 +360,9 @@ HLL_LIBRARY(SystemService,
 	    HLL_EXPORT(RestrainScreensaver, SystemService_RestrainScreensaver),
 	    HLL_TODO_EXPORT(Debug_GetUseVideoMemorySize, SystemService_Debug_GetUseVideoMemorySize),
 	    HLL_EXPORT(Rance0123456789, SystemService_Rance0123456789),
-	    HLL_EXPORT(Test, SystemService_Test)
+	    HLL_EXPORT(XXXXX01XXXXXXXX, SystemService_XXXXX01XXXXXXXX),
+	    HLL_EXPORT(Test, SystemService_Test),
+	    HLL_EXPORT(DRPKT, SystemService_DRPKT)
 	);
 
 static struct ain_hll_function *get_fun(int libno, const char *name)

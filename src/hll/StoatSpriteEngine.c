@@ -127,6 +127,8 @@ bool StoatSpriteEngine_SP_SetTextSprite(int sp_no, struct string *text)
 
 void StoatSpriteEngine_SP_SetTextSpriteType(int type)
 {
+	if (text_sprite_ts.face != type)
+		text_sprite_ts.font_size = NULL;
 	text_sprite_ts.face = type;
 }
 
@@ -313,7 +315,7 @@ static void multisprite_reset_cg(struct multisprite *sp)
 
 static int StoatSpriteEngine_Init(void *imain_system, int cg_cache_size)
 {
-	sact_init(cg_cache_size, false);
+	sact_init(cg_cache_size, STOAT_SPRITE_ENGINE);
 	for (int i = 0; i < NR_SP_TYPES; i++) {
 		sp_types[i].nr_sprites = 16;
 		sp_types[i].sprites = xcalloc(16, sizeof(struct multisprite*));
