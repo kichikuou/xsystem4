@@ -225,7 +225,7 @@ int save_globals(const char *keyname, const char *filename, const char *group_na
 	char *path = savedir_path(filename);
 	FILE *fp = file_open_utf8(path, "wb");
 	if (!fp) {
-		WARNING("Failed to open save file %s: %s", display_utf0(path), strerror(errno));
+		sys_report("Failed to open save file %s: %s", display_utf0(path), strerror(errno));
 		free(path);
 		gsave_free(save);
 		return 0;
@@ -236,8 +236,9 @@ int save_globals(const char *keyname, const char *filename, const char *group_na
 	int compression_level = AIN_VERSION_GTE(ain, 6, 0) ? 1 : 9;
 	enum savefile_error error = gsave_write(save, fp, encrypt, compression_level);
 	if (error != SAVEFILE_SUCCESS)
-		WARNING("Failed to write save file: %s", savefile_strerror(error));
-	fclose(fp);
+		sys_report("Failed to write save file: %s", savefile_strerror(error));
+	if (fclose(fp) != 0)
+		sys_report("Failed to close save file: %s", strerror(errno));
 	gsave_free(save);
 	if (n_out)
 		*n_out = nr_vars;

@@ -384,7 +384,7 @@ static int save_rsave_image(const char *key, const char *path)
 	char *full_path = savedir_path(path);
 	FILE *fp = file_open_utf8(full_path, "wb");
 	if (!fp) {
-		WARNING("Failed to open save file %s: %s", display_utf0(full_path), strerror(errno));
+		sys_report("Failed to open save file %s: %s", display_utf0(full_path), strerror(errno));
 		free(full_path);
 		rsave_free(save);
 		return 0;
@@ -395,8 +395,9 @@ static int save_rsave_image(const char *key, const char *path)
 	int compression_level = 1;
 	enum savefile_error error = rsave_write(save, fp, encrypt, compression_level);
 	if (error != SAVEFILE_SUCCESS)
-		WARNING("Failed to write save file: %s", savefile_strerror(error));
-	fclose(fp);
+		sys_report("Failed to write save file: %s", savefile_strerror(error));
+	if (fclose(fp) != 0)
+		sys_report("Failed to close save file: %s", strerror(errno));
 	rsave_free(save);
 	return 1;
 }

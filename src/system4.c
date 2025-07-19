@@ -430,6 +430,17 @@ void init_filesystem(void) {
 }
 #endif
 
+void sys_report(const char *fmt, ...)
+{
+	va_list ap;
+	va_start(ap, fmt);
+	char msg[4096];
+	vsnprintf(msg, 4096, fmt, ap);
+	MAIN_THREAD_EM_ASM({
+		Module.shell.report_error(UTF8ToString($0));
+	}, msg);
+}
+
 int main(int argc, char *argv[])
 {
 #ifdef __EMSCRIPTEN__

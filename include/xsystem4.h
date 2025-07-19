@@ -67,6 +67,7 @@ const char *display_utf2(const char *utf);
 void indent_message(int indent, const char *fmt, ...);
 
 void log_message(const char *log, const char *fmt, ...);
+void sys_report(const char *fmt, ...);
 
 #define UNIMPLEMENTED(fmt, ...) \
 	sys_warning("unimplemented: %s" fmt "\n", __func__, ##__VA_ARGS__)
