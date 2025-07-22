@@ -380,7 +380,7 @@ void hll_call(int libno, int fno)
 				break;
 			// fallthrough
 		default:
-			variable_fini(stack[stack_ptr+j], f->arguments[i].type.data);
+			variable_fini(stack[stack_ptr+j], f->arguments[i].type.data, false);
 			break;
 		}
 	}
@@ -414,8 +414,10 @@ extern struct static_library lib_AliceLogo3;
 extern struct static_library lib_AliceLogo4;
 extern struct static_library lib_AliceLogo5;
 extern struct static_library lib_AnteaterADVEngine;
+extern struct static_library lib_Array;
 extern struct static_library lib_BanMisc;
 extern struct static_library lib_Bitarray;
+extern struct static_library lib_CalcTable;
 extern struct static_library lib_CGManager;
 extern struct static_library lib_ChipmunkSpriteEngine;
 extern struct static_library lib_ChrLoader;
@@ -430,6 +432,7 @@ extern struct static_library lib_DALKEDemo;
 extern struct static_library lib_Data;
 extern struct static_library lib_DataFile;
 extern struct static_library lib_DrawDungeon;
+extern struct static_library lib_DrawDungeon2;
 extern struct static_library lib_DrawDungeon14;
 extern struct static_library lib_DrawEffect;
 extern struct static_library lib_DrawGraph;
@@ -521,8 +524,10 @@ static struct static_library *static_libraries[] = {
 	&lib_AliceLogo4,
 	&lib_AliceLogo5,
 	&lib_AnteaterADVEngine,
+	&lib_Array,
 	&lib_BanMisc,
 	&lib_Bitarray,
+	&lib_CalcTable,
 	&lib_CGManager,
 	&lib_ChipmunkSpriteEngine,
 	&lib_ChrLoader,
@@ -537,6 +542,7 @@ static struct static_library *static_libraries[] = {
 	&lib_Data,
 	&lib_DataFile,
 	&lib_DrawDungeon,
+	&lib_DrawDungeon2,
 	&lib_DrawDungeon14,
 	&lib_DrawEffect,
 	&lib_DrawGraph,

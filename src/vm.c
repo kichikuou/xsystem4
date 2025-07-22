@@ -424,7 +424,7 @@ static void delegate_call(int dg_no, int return_address)
 		stack_pop(); // dg_index
 		stack_pop(); // dg_page
 		for (int i = ain->delegates[dg_no].nr_variables - 1; i >= 0; i--) {
-			variable_fini(stack_pop(), ain->delegates[dg_no].variables[i].type.data);
+			variable_fini(stack_pop(), ain->delegates[dg_no].variables[i].type.data, true);
 		}
 		if (return_values) {
 			stack_push(r);
@@ -453,9 +453,14 @@ static void function_return(void)
 	call_stack_ptr--;
 }
 
-static const SDL_MessageBoxButtonData buttons[] = {
+static const SDL_MessageBoxButtonData ok_cancel_buttons[] = {
 	{ SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT, 1, "OK" },
 	{ SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT, 0, "Cancel" },
+};
+
+static const SDL_MessageBoxButtonData stop_continue_buttons[] = {
+	{ SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT, 1, "Stop" },
+	{ 0, 0, "Continue" },
 };
 
 static struct string *get_func_stack_name(int index)
@@ -527,8 +532,8 @@ static void system_call(enum syscall_code code)
 			NULL,
 			"xsystem4",
 			utf,
-			SDL_arraysize(buttons),
-			buttons,
+			SDL_arraysize(ok_cancel_buttons),
+			ok_cancel_buttons,
 			NULL
 		};
 		if (SDL_ShowMessageBox(&mbox, &result)) {
@@ -596,8 +601,27 @@ static void system_call(enum syscall_code code)
 		break;
 	}
 	case SYS_ERROR: {// system.Error(string szText)
+		int result = 0;
 		struct string *str = stack_peek_string(0);
-		sys_warning("*GAME ERROR*: %s\n", display_sjis0(str->text));
+		char *utf = sjis2utf(str->text, str->size);
+		sys_warning("*GAME ERROR*: %s\n", utf);
+		const SDL_MessageBoxData mbox = {
+			SDL_MESSAGEBOX_ERROR,
+			NULL,
+			"Game Error - xsystem4",
+			utf,
+			SDL_arraysize(stop_continue_buttons),
+			stop_continue_buttons,
+			NULL
+		};
+		if (SDL_ShowMessageBox(&mbox, &result)) {
+			WARNING("Error displaying message box");
+		}
+		free(utf);
+		if (result == 1) {
+			// stop execution
+			vm_exit(1);
+		}
 		// XXX: caller S_POPs
 		break;
 	}
@@ -2301,8 +2325,28 @@ static void vm_execute(void)
 	}
 }
 
+static void call_global_destructors(void)
+{
+	if (heap_size <= 0 || heap[0].ref <= 0)
+		return;
+	struct page *global_page = heap_get_page(0);
+	// Call global variable destructors, but do not unref them because the
+	// destructors may reference other global variables.
+	for (int i = global_page->nr_vars - 1; i >= 0; i--) {
+		if (variable_type(global_page, i, NULL, NULL) != AIN_STRUCT)
+			continue;
+		int slot = global_page->values[i].i;
+		delete_struct(heap_get_page(slot)->index, slot);
+	}
+}
+
 static void vm_free(void)
 {
+	if (game_dungeons_and_dolls) {
+		// Dungeons & Dolls saves the game state in destructors of global variables
+		call_global_destructors();
+	}
+
 	// call library exit routines
 	exit_libraries();
 	// flush call stack
