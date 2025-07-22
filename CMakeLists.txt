@@ -240,7 +240,6 @@ if (XSYSTEM4_INSTALL_DIR)
     FILES
       ${CMAKE_CURRENT_BINARY_DIR}/xsystem4.js
       ${CMAKE_CURRENT_BINARY_DIR}/xsystem4.wasm
-      ${CMAKE_CURRENT_BINARY_DIR}/xsystem4.aw.js
     DESTINATION ${XSYSTEM4_INSTALL_DIR})
 endif()
 
