@@ -1,4 +1,4 @@
-/* Copyright (C) 2023 Nunuhara Cabbage <nunuhara@haniwa.technology>
+/* Copyright (C) 2025 Nunuhara Cabbage <nunuhara@haniwa.technology>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -14,15 +14,13 @@
  * along with this program; if not, see <http://gnu.org/licenses/>.
  */
 
-uniform sampler2D tex;
-uniform float blend_rate;
-uniform vec3 multiply_color;
+#ifndef SYSTEM4_ICON_H
+#define SYSTEM4_ICON_H
 
-in vec2 tex_coord;
-out vec4 frag_color;
+#ifdef __ANDROID__
+#define icon_init()
+#else
+void icon_init(void);
+#endif
 
-void main() {
-	frag_color = texture(tex, tex_coord);
-	frag_color.rgb *= multiply_color;
-	frag_color.a *= blend_rate;
-}
+#endif /* SYSTEM4_ICON_H */

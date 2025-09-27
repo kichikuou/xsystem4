@@ -33,6 +33,7 @@
 
 #include "gfx/gfx.h"
 #include "gfx/private.h"
+#include "icon.h"
 #include "xsystem4.h"
 
 struct sdl_private sdl;
@@ -291,6 +292,7 @@ int gfx_init(void)
 	init_window_size();
 	atexit(gfx_fini);
 	gfx_clear();
+	icon_init();
 	gfx_initialized = true;
 	return 0;
 }

@@ -27,6 +27,7 @@ enum resume_save_format {
 
 struct config {
 	char *game_name;
+	char *boot_name;
 	char *ain_filename;
 	char *vm_name;
 	char *game_dir;
@@ -92,6 +93,7 @@ extern bool game_rance02_mg;
 extern bool game_rance6_mg;
 extern bool game_rance7_mg;
 extern bool game_rance8;
+extern bool game_rance8_mg;
 extern bool game_dungeons_and_dolls;
 
 #endif /* XSYSTEM4_H */

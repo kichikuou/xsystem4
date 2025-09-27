@@ -303,13 +303,13 @@ void hll_call(int libno, int fno)
 	if (!fun->fun)
 		VM_ERROR("Unimplemented HLL function: %s.%s", ain->libraries[libno].name, f->name);
 
-	// XXX: Try to prevent the heap from being reallocated mid-call.
-	//      This only works to the extent that HLL functions can guarantee
-	//      no more than 64 heap allocations occur within the call...
-	heap_guarantee(64);
-
 	void *args[HLL_MAX_ARGS];
 	void *ptrs[HLL_MAX_ARGS];
+	// Copy reference arguments to the stack to protect against heap
+	// reallocation during HLL calls.
+	void *heap_ptrs[HLL_MAX_ARGS];
+	int heap_slots[HLL_MAX_ARGS];
+
 	for (int i = f->nr_arguments - 1; i >= 0; i--) {
 		switch (f->arguments[i].type.data) {
 		case AIN_REF_INT:
@@ -330,7 +330,9 @@ void hll_call(int libno, int fno)
 			break;
 		case AIN_REF_STRING:
 			stack_ptr--;
-			ptrs[i] = &heap[stack[stack_ptr].i].s;
+			heap_slots[i] = stack[stack_ptr].i;
+			heap_ptrs[i] = heap[stack[stack_ptr].i].s;
+			ptrs[i] = &heap_ptrs[i];
 			args[i] = &ptrs[i];
 			break;
 		case AIN_STRUCT:
@@ -341,7 +343,9 @@ void hll_call(int libno, int fno)
 		case AIN_REF_STRUCT:
 		case AIN_REF_ARRAY_TYPE:
 			stack_ptr--;
-			ptrs[i] = &heap[stack[stack_ptr].i].page;
+			heap_slots[i] = stack[stack_ptr].i;
+			heap_ptrs[i] = heap[stack[stack_ptr].i].page;
+			ptrs[i] = &heap_ptrs[i];
 			args[i] = &ptrs[i];
 			break;
 		default:
@@ -370,9 +374,13 @@ void hll_call(int libno, int fno)
 			j++;
 			break;
 		case AIN_REF_STRING:
+			heap[heap_slots[i]].s = heap_ptrs[i];
+			break;
 		case AIN_REF_STRUCT:
-		case AIN_REF_FUNC_TYPE:
 		case AIN_REF_ARRAY_TYPE:
+			heap[heap_slots[i]].page = heap_ptrs[i];
+			break;
+		case AIN_REF_FUNC_TYPE:
 			break;
 		case AIN_ARRAY_TYPE:
 			// Sys41VM doesn't make a copy when passing an array by value.
@@ -407,6 +415,7 @@ void hll_call(int libno, int fno)
 }
 
 extern struct static_library lib_ACXLoader;
+extern struct static_library lib_ACXLoaderP2;
 extern struct static_library lib_ADVSYS;
 extern struct static_library lib_AliceLogo;
 extern struct static_library lib_AliceLogo2;
@@ -435,10 +444,12 @@ extern struct static_library lib_DrawDungeon;
 extern struct static_library lib_DrawDungeon2;
 extern struct static_library lib_DrawDungeon14;
 extern struct static_library lib_DrawEffect;
+extern struct static_library lib_DrawField;
 extern struct static_library lib_DrawGraph;
 extern struct static_library lib_DrawMovie;
 extern struct static_library lib_DrawMovie2;
 extern struct static_library lib_DrawMovie3;
+extern struct static_library lib_DrawNumeral;
 extern struct static_library lib_DrawPluginManager;
 extern struct static_library lib_DrawRain;
 extern struct static_library lib_DrawRipple;
@@ -451,6 +462,7 @@ extern struct static_library lib_FillAngle;
 extern struct static_library lib_GoatGUIEngine;
 extern struct static_library lib_Gpx2Plus;
 extern struct static_library lib_GUIEngine;
+extern struct static_library lib_HTTPDownloader;
 extern struct static_library lib_IbisInputEngine;
 extern struct static_library lib_InputDevice;
 extern struct static_library lib_InputString;
@@ -468,9 +480,11 @@ extern struct static_library lib_MonsterInfo;
 extern struct static_library lib_MsgLogManager;
 extern struct static_library lib_MsgLogViewer;
 extern struct static_library lib_MsgSkip;
+extern struct static_library lib_MusicSystem;
 extern struct static_library lib_NewFont;
 extern struct static_library lib_OutputLog;
 extern struct static_library lib_PassRegister;
+extern struct static_library lib_PastelChime2;
 extern struct static_library lib_PartsEngine;
 extern struct static_library lib_PixelRestore;
 extern struct static_library lib_PlayDemo;
@@ -517,6 +531,7 @@ extern struct static_library lib_VSFile;
 
 static struct static_library *static_libraries[] = {
 	&lib_ACXLoader,
+	&lib_ACXLoaderP2,
 	&lib_ADVSYS,
 	&lib_AliceLogo,
 	&lib_AliceLogo2,
@@ -545,10 +560,12 @@ static struct static_library *static_libraries[] = {
 	&lib_DrawDungeon2,
 	&lib_DrawDungeon14,
 	&lib_DrawEffect,
+	&lib_DrawField,
 	&lib_DrawGraph,
 	&lib_DrawMovie,
 	&lib_DrawMovie2,
 	&lib_DrawMovie3,
+	&lib_DrawNumeral,
 	&lib_DrawPluginManager,
 	&lib_DrawRain,
 	&lib_DrawRipple,
@@ -561,6 +578,7 @@ static struct static_library *static_libraries[] = {
 	&lib_GoatGUIEngine,
 	&lib_Gpx2Plus,
 	&lib_GUIEngine,
+	&lib_HTTPDownloader,
 	&lib_IbisInputEngine,
 	&lib_InputDevice,
 	&lib_InputString,
@@ -578,9 +596,11 @@ static struct static_library *static_libraries[] = {
 	&lib_MsgLogManager,
 	&lib_MsgLogViewer,
 	&lib_MsgSkip,
+	&lib_MusicSystem,
 	&lib_NewFont,
 	&lib_OutputLog,
 	&lib_PassRegister,
+	&lib_PastelChime2,
 	&lib_PartsEngine,
 	&lib_PixelRestore,
 	&lib_PlayDemo,

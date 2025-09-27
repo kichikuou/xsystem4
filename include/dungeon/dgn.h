@@ -20,6 +20,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <cglm/cglm.h>
 
 /*
  * Dungeon data is a collection of cells indexed by three integers (x, y, z).
@@ -45,7 +46,13 @@ struct dgn_cell {
 	int32_t west_door;
 	int32_t stairs_texture;
 	int32_t stairs_orientation;
-	// int32_t unknown[13];
+	int32_t lightmap_floor;
+	int32_t lightmap_ceiling;
+	int32_t lightmap_north;
+	int32_t lightmap_south;
+	int32_t lightmap_east;
+	int32_t lightmap_west;
+	// int32_t unknown[7];
 	int32_t enterable;
 	int32_t enterable_north;
 	int32_t enterable_south;
@@ -86,6 +93,10 @@ struct dgn_cell {
 	float south_door_angle;
 	float east_door_angle;
 	float west_door_angle;
+	int north_door_lock;
+	int south_door_lock;
+	int east_door_lock;
+	int west_door_lock;
 	int32_t floor_event2;
 	int32_t north_event2;
 	int32_t south_event2;
@@ -107,19 +118,28 @@ struct packed_pvs {
 };
 
 struct dgn {
-	uint32_t version; // 10: Rance VI, 13: GALZOO Island
 	uint32_t size_x;
 	uint32_t size_y;
 	uint32_t size_z;
 	// uint32_t unknown[10];
 	struct dgn_cell *cells;
 	struct packed_pvs *pvs;
+	vec3 sphere_theta;
+	float sphere_color_top;
+	float sphere_color_bottom;
 
-	int start_x, start_y; // DrawDungeon2
-	int exit_x, exit_y; // DrawDungeon2
+	// for generated dungeons
+	int start_x, start_y;
+	int exit_x, exit_y;
+
+	// DrawField
+	int32_t back_color_r;
+	int32_t back_color_g;
+	int32_t back_color_b;
 };
 
-struct dgn *dgn_parse(uint8_t *data, size_t size);
+struct dgn *dgn_new(uint32_t size_x, uint32_t size_y, uint32_t size_z);
+struct dgn *dgn_parse(uint8_t *data, size_t size, bool for_draw_field);
 void dgn_free(struct dgn *dgn);
 
 int dgn_cell_index(struct dgn *dgn, uint32_t x, uint32_t y, uint32_t z);
@@ -138,8 +158,6 @@ static inline bool dgn_is_in_map(struct dgn *dgn, uint32_t x, uint32_t y, uint32
 
 // Returns a list of cells visible from (x, y, z), sorted by distance from (x, y, z).
 struct dgn_cell **dgn_get_visible_cells(struct dgn *dgn, int x, int y, int z, int *nr_cells_out);
-
-struct dgn *dgn_generate_drawdungeon2(int level);
-void dgn_paint_step(struct dgn *dgn, int x, int y);
+void dgn_calc_lightmap(struct dgn *dgn);
 
 #endif /* SYSTEM4_DGN_H */

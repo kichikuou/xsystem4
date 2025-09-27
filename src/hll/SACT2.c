@@ -794,8 +794,13 @@ bool sact_Joypad_GetDigitalStickStatus(int num, int type, bool *left, bool *righ
 
 int sact_Key_ClearFlag(void)
 {
-	key_clear_flag();
+	key_clear_flag(false);
 	return 1;
+}
+
+void sact_Key_ClearFlagNoCtrl(void)
+{
+	key_clear_flag(true);
 }
 
 int sact_Key_IsDown(int keycode)
@@ -836,17 +841,28 @@ void sact_CG_BlendAMapBin(int dst, int dx, int dy, int src, int sx, int sy, int 
 //void SACT2_Debug_Pause(void);
 //void SACT2_Debug_GetFuncStack(struct string **s, int nest);
 
-int SACT2_SP_SetBrightness(int sp_no, int brightness)
+int sact_SP_SetBrightness(int sp_no, int brightness)
 {
-	if (brightness != 255)
-		WARNING("Unimplemented HLL function: SACT2.SP_SetBrightness(%d, %d)", sp_no, brightness);
+	struct sact_sprite *sp = sact_try_get_sprite(sp_no);
+	if (!sp) return 0;
+	sprite_set_multiply_color(sp, brightness, brightness, brightness);
+	sprite_dirty(sp);
 	return 1;
 }
 
-int SACT2_SP_GetBrightness(int sp_no)
+int sact_SP_GetBrightness(int sp_no)
 {
-	return 255;
+	struct sact_sprite *sp = sact_try_get_sprite(sp_no);
+	if (!sp) return 0;
+	return sp->multiply_color.r;
 }
+
+HLL_WARN_UNIMPLEMENTED(0, int, SACT2, Music_GetSampleData, int nCh, struct page **anDst, int nSamplePos);
+HLL_WARN_UNIMPLEMENTED(0, int, SACT2, Music_MillisecondsToSamples, int nMillisec, int nSamplesPerSec);
+HLL_WARN_UNIMPLEMENTED(0, int, SACT2, Music_GetFormat, int nCh, int *pnSamplesPerSec, int *pnBitsPerSample, int *pnChannels);
+HLL_WARN_UNIMPLEMENTED(, void, SACT2, FFT_rdft, struct page **a);
+HLL_WARN_UNIMPLEMENTED(, void, SACT2, FFT_hanning_window, struct page **a);
+HLL_WARN_UNIMPLEMENTED(0, int, SACT2, Music_AnalyzeSampleData, struct page **l, struct page **r, struct page **src, int chns, int bps);
 
 #define SACT_EXPORTS \
 	    HLL_EXPORT(_ModuleFini, sact_ModuleFini), \
@@ -962,6 +978,12 @@ int SACT2_SP_GetBrightness(int sp_no)
 	    HLL_EXPORT(Music_GetSamplePos, bgm_get_sample_pos), \
 	    HLL_EXPORT(Music_GetSampleLength, bgm_get_sample_length), \
 	    HLL_EXPORT(Music_Seek, bgm_seek), \
+	    HLL_EXPORT(Music_GetSampleData, SACT2_Music_GetSampleData), \
+	    HLL_EXPORT(Music_MillisecondsToSamples, SACT2_Music_MillisecondsToSamples), \
+	    HLL_EXPORT(Music_GetFormat, SACT2_Music_GetFormat), \
+	    HLL_EXPORT(FFT_rdft, SACT2_FFT_rdft), \
+	    HLL_EXPORT(FFT_hanning_window, SACT2_FFT_hanning_window), \
+	    HLL_EXPORT(Music_AnalyzeSampleData, SACT2_Music_AnalyzeSampleData), \
 	    HLL_EXPORT(Sound_IsExist, wav_exists), \
 	    HLL_EXPORT(Sound_GetUnuseChannel, wav_get_unused_channel), \
 	    HLL_EXPORT(Sound_Prepare, wav_prepare), \
@@ -989,8 +1011,8 @@ int SACT2_SP_GetBrightness(int sp_no)
 	    HLL_TODO_EXPORT(Debug_GetFuncStack, SACT2_Debug_GetFuncStack), \
 	    HLL_EXPORT(SP_GetAMapValue, sact_SP_GetAMapValue), \
 	    HLL_EXPORT(SP_GetPixelValue, sact_SP_GetPixelValue), \
-	    HLL_EXPORT(SP_SetBrightness, SACT2_SP_SetBrightness), \
-	    HLL_EXPORT(SP_GetBrightness, SACT2_SP_GetBrightness)
+	    HLL_EXPORT(SP_SetBrightness, sact_SP_SetBrightness), \
+	    HLL_EXPORT(SP_GetBrightness, sact_SP_GetBrightness)
 
 HLL_WARN_UNIMPLEMENTED( , void, SACTDX, SetVolumeMixerMasterGroupNum, int n);
 HLL_WARN_UNIMPLEMENTED( , void, SACTDX, SetVolumeMixerSEGroupNum, int n);
@@ -998,10 +1020,6 @@ HLL_WARN_UNIMPLEMENTED( , void, SACTDX, SetVolumeMixerBGMGroupNum, int n);
 //static int SACTDX_SP_CreateCopy(int nSP, int nSrcSp);
 //static bool SACTDX_Joypad_GetAnalogStickStatus(int nNum, int nType, ref float pfDegree, ref float pfPower);
 //static bool SACTDX_Joypad_GetDigitalStickStatus(int nNum, int nType, ref bool pbLeft, ref bool pbRight, ref bool pbUp, ref bool pbDown);
-//static void SACTDX_FFT_rdft(ref array@float a);
-//static void SACTDX_FFT_hanning_window(ref array@float a);
-//static int SACTDX_Music_AnalyzeSampleData(ref array@float l, ref array@float r, ref array@int src, int chns, int bps);
-//static void SACTDX_Key_ClearFlagNoCtrl(void);
 //static void SACTDX_Key_ClearFlagOne(int nKeyCode);
 
 int sact_TRANS_Begin(int type)
@@ -1045,7 +1063,8 @@ void sact_DX_SetUsePower2Texture(bool use)
 }
 
 #define SACT2_EXPORTS \
-	HLL_EXPORT(Init, SACT2_Init)
+	HLL_EXPORT(Init, SACT2_Init), \
+	HLL_EXPORT(Key_ClearFlagNoCtrl, sact_Key_ClearFlagNoCtrl)
 
 #define SACTDX_EXPORTS \
 	HLL_EXPORT(Init, SACTDX_Init), \
@@ -1057,10 +1076,7 @@ void sact_DX_SetUsePower2Texture(bool use)
 	HLL_TODO_EXPORT(SP_CreateCopy, SACTDX_SP_CreateCopy),	\
 	HLL_TODO_EXPORT(Joypad_GetAnalogStickStatus, SACTDX_Joypad_GetAnalogStickStatus), \
 	HLL_TODO_EXPORT(GetDigitalStickStatus, SACTDX_GetDigitalStickStatus), \
-	HLL_TODO_EXPORT(FFT_rdft, SACTDX_FFT_rdft),		\
-	HLL_TODO_EXPORT(FFT_hanning_window, SACTDX_FFT_hanning_window),	\
-	HLL_TODO_EXPORT(Music_AnalyzeSampleData, SACTDX_Music_AnalyzeSampleData), \
-	HLL_TODO_EXPORT(Key_ClearFlagNoCtrl, SACTDX_Key_ClearFlagNoCtrl), \
+	HLL_EXPORT(Key_ClearFlagNoCtrl, sact_Key_ClearFlagNoCtrl), \
 	HLL_TODO_EXPORT(Key_ClearFlagOne, SACTDX_Key_ClearFlagOne), \
 	HLL_EXPORT(TRANS_Begin, sact_TRANS_Begin),	    \
 	HLL_EXPORT(TRANS_Update, sact_TRANS_Update),	    \

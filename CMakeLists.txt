@@ -63,6 +63,7 @@ target_sources(xsystem4 PRIVATE
   src/format.c
   src/hacks.c
   src/heap.c
+  src/icon.c
   src/id_pool.c
   src/input.c
   src/json.c
@@ -91,6 +92,7 @@ target_sources(xsystem4 PRIVATE
   src/dungeon/dgn.c
   src/dungeon/dtx.c
   src/dungeon/dungeon.c
+  src/dungeon/generator.c
   src/dungeon/map.c
   src/dungeon/mtrand43.c
   src/dungeon/polyobj.c
@@ -138,6 +140,7 @@ target_sources(xsystem4 PRIVATE
   src/hll/DrawEffect.c
   src/hll/DrawGraph.c
   src/hll/DrawMovie.c
+  src/hll/DrawNumeral.c
   src/hll/DrawPluginManager.c
   src/hll/DrawRain.c
   src/hll/DrawRipple.c
@@ -150,6 +153,7 @@ target_sources(xsystem4 PRIVATE
   src/hll/GoatGUIEngine.c
   src/hll/Gpx2Plus.c
   src/hll/GUIEngine.c
+  src/hll/HTTPDownloader.c
   src/hll/iarray.c
   src/hll/IbisInputEngine.c
   src/hll/InputDevice.c
@@ -168,9 +172,11 @@ target_sources(xsystem4 PRIVATE
   src/hll/MsgLogManager.c
   src/hll/MsgLogViewer.c
   src/hll/MsgSkip.c
+  src/hll/MusicSystem.c
   src/hll/NewFont.c
   src/hll/OutputLog.c
   src/hll/PassRegister.c
+  src/hll/PastelChime2.c
   src/hll/PartsEngine.c
   src/hll/PixelRestore.c
   src/hll/PlayDemo.c

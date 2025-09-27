@@ -88,6 +88,10 @@ static void prepare_sact_shader(struct gfx_render_job *job, void *data)
 	struct sprite_shader *s = (struct sprite_shader*)job->shader;
 	struct sact_sprite *sp = (struct sact_sprite*)data;
 	glUniform1f(s->blend_rate, sp->blend_rate / 255.0f);
+	glUniform3f(s->multiply_color,
+			sp->multiply_color.r / 255.0f,
+			sp->multiply_color.g / 255.0f,
+			sp->multiply_color.b / 255.0f);
 }
 
 static void prepare_chipmunk_shader(struct gfx_render_job *job, void *data)
@@ -123,6 +127,7 @@ void sprite_init_sact(void)
 	}
 	gfx_load_shader(&sprite_shader.s, "shaders/render.v.glsl", "shaders/sprite.f.glsl");
 	sprite_shader.blend_rate = glGetUniformLocation(sprite_shader.s.program, "blend_rate");
+	sprite_shader.multiply_color = glGetUniformLocation(sprite_shader.s.program, "multiply_color");
 	sprite_shader.s.prepare = prepare_sact_shader;
 
 }
@@ -169,9 +174,15 @@ static void sprite_render(struct sprite *_sp)
 		break;
 	}
 
-	_gfx_render_texture(&sprite_shader.s, &sp->texture, &sp->rect, sp);
+	Rectangle r = sp->rect;
+	if (sp->surface_area.x || sp->surface_area.y) {
+		r.x -= sp->surface_area.x;
+		r.y -= sp->surface_area.y;
+	}
+
+	_gfx_render_texture(&sprite_shader.s, &sp->texture, &r, sp);
 	if (sp->text.texture.handle) {
-		_gfx_render_texture(&sprite_shader.s, &sp->text.texture, &sp->rect, sp);
+		_gfx_render_texture(&sprite_shader.s, &sp->text.texture, &r, sp);
 	}
 
 	if (sp->draw_method != DRAW_METHOD_NORMAL)
@@ -378,8 +389,9 @@ void sprite_set_text_char_space(struct sact_sprite *sp, int px)
 
 void sprite_set_text_pos(struct sact_sprite *sp, int x, int y)
 {
+	if (sp->text.pos.y != y)
+		sp->text.current_line_height = 0;
 	sp->text.pos = (Point) { .x = x, .y = y };
-	sp->text.current_line_height = 0;
 	sprite_dirty(sp);
 }
 

@@ -1,4 +1,4 @@
-/* Copyright (C) 2023 Nunuhara Cabbage <nunuhara@haniwa.technology>
+/* Copyright (C) 2025 kichikuou <KichikuouChrome@gmail.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -14,15 +14,10 @@
  * along with this program; if not, see <http://gnu.org/licenses/>.
  */
 
-uniform sampler2D tex;
-uniform float blend_rate;
-uniform vec3 multiply_color;
+#include "hll.h"
 
-in vec2 tex_coord;
-out vec4 frag_color;
+HLL_WARN_UNIMPLEMENTED(, void, MusicSystem, SetErrorOutput, bool bOutputIDE, bool bErrorMsgBox);
 
-void main() {
-	frag_color = texture(tex, tex_coord);
-	frag_color.rgb *= multiply_color;
-	frag_color.a *= blend_rate;
-}
+HLL_LIBRARY(MusicSystem,
+	    HLL_EXPORT(SetErrorOutput, MusicSystem_SetErrorOutput)
+	    );
