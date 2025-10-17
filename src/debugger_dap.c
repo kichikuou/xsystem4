@@ -56,6 +56,9 @@ static enum {
 	DAP_STOPPED
 } dap_state = DAP_UNINITIALIZED;
 
+static bool dap_launch_req_received = false;
+static bool dap_config_done_req_received = false;
+
 static enum {
 	NOT_STEPPING = 0,
 	STEPPING_INTO,
@@ -178,12 +181,17 @@ static void cmd_launch(cJSON *args, cJSON *resp)
 
 	// TODO: handle noDebug option
 	send_response(resp, true);
-	dap_state = DAP_RUNNING;
+	dap_launch_req_received = true;
+	if (dap_config_done_req_received)
+		dap_state = DAP_RUNNING;
 }
 
 static void cmd_configurationDone(cJSON *args, cJSON *resp)
 {
 	send_response(resp, true);
+	dap_config_done_req_received = true;
+	if (dap_launch_req_received)
+		dap_state = DAP_RUNNING;
 }
 
 static void cmd_stackTrace(cJSON *args, cJSON *resp)
@@ -325,32 +333,34 @@ static int make_var_ref(struct ain_type *type, union vm_value value)
 	return 0;
 }
 
-static cJSON *value_to_json(const char *name, struct ain_type *type, union vm_value value)
+static cJSON *value_to_json(const char *name, struct ain_type *type, struct page *page, int slot)
 {
 	char *s_type = ain_strtype_d(ain, type);
-	struct string *s_val = dbg_value_to_string(type, value, 0);
+	struct string *s_val = dbg_variable_to_string(type, page, slot, 0);
 
 	cJSON *json = cJSON_CreateObject();
 	json_add_sjis_to_object(json, "name", name);
 	json_add_sjis_to_object(json, "value", s_val->text);
 	json_add_sjis_to_object(json, "type", s_type);
-	cJSON_AddNumberToObject(json, "variablesReference", make_var_ref(type, value));
+	cJSON_AddNumberToObject(json, "variablesReference", make_var_ref(type, page->values[slot]));
 
 	free_string(s_val);
 	free(s_type);
 	return json;
 }
 
-static cJSON *var_to_json(struct ain_variable *var, union vm_value value)
+static void add_var_to_json_array(cJSON *array, struct ain_variable *var, struct page *page, int slot)
 {
-	return value_to_json(var->name, &var->type, value);
+	if (var->type.data == AIN_VOID)
+		return;
+	cJSON_AddItemToArray(array, value_to_json(var->name, &var->type, page, slot));
 }
 
 static void add_arguments_to_array(cJSON *array, struct page *page)
 {
 	struct ain_function *f = &ain->functions[page->index];
 	for (int i = 0; i < f->nr_args; i++) {
-		cJSON_AddItemToArray(array, var_to_json(&f->vars[i], page->values[i]));
+		add_var_to_json_array(array, &f->vars[i], page, i);
 	}
 }
 
@@ -358,7 +368,7 @@ static void add_locals_to_array(cJSON *array, struct page *page)
 {
 	struct ain_function *f = &ain->functions[page->index];
 	for (int i = f->nr_args; i < f->nr_vars; i++) {
-		cJSON_AddItemToArray(array, var_to_json(&f->vars[i], page->values[i]));
+		add_var_to_json_array(array, &f->vars[i], page, i);
 	}
 }
 
@@ -366,7 +376,7 @@ static void add_variables_to_array(cJSON *array, struct page *page)
 {
 	struct ain_function *f = &ain->functions[page->index];
 	for (int i = 0; i < f->nr_vars; i++) {
-		cJSON_AddItemToArray(array, var_to_json(&f->vars[i], page->values[i]));
+		add_var_to_json_array(array, &f->vars[i], page, i);
 	}
 }
 
@@ -374,14 +384,14 @@ static void add_members_to_array(cJSON *array, struct page *page)
 {
 	struct ain_struct *s = &ain->structures[page->index];
 	for (int i = 0; i < s->nr_members; i++) {
-		cJSON_AddItemToArray(array, var_to_json(&s->members[i], page->values[i]));
+		add_var_to_json_array(array, &s->members[i], page, i);
 	}
 }
 
 static void add_globals_to_array(cJSON *array, struct page *page)
 {
 	for (int i = 0; i < ain->nr_globals; i++) {
-		cJSON_AddItemToArray(array, var_to_json(&ain->globals[i], page->values[i]));
+		add_var_to_json_array(array, &ain->globals[i], page, i);
 	}
 }
 
@@ -395,7 +405,7 @@ static void add_array_elements_to_array(cJSON *array, struct page *page)
 		snprintf(name, 512, "[%d]", i);
 		struct ain_type type;
 		type.data = variable_type(page, i, &type.struc, &type.rank);
-		cJSON_AddItemToArray(array, value_to_json(name, &type, page->values[i]));
+		cJSON_AddItemToArray(array, value_to_json(name, &type, page, i));
 	}
 }
 
@@ -1085,6 +1095,13 @@ void dbg_dap_log(const char *log, const char *fmt, va_list ap)
 	size_t len = max(1024, strlen(fmt) * 2);
 	char *buf = xmalloc(len);
 	vsnprintf(buf, len, fmt, ap);
+#ifdef _WIN32
+	// Since the callers use display_sjis*(), buf is in Shift_JIS on Windows.
+	// Convert to UTF-8 for DAP.
+	char *utf8 = sjis2utf(buf, 0);
+	free(buf);
+	buf = utf8;
+#endif
 	emit_output_event(log, buf);
 	free(buf);
 }

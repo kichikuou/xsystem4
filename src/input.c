@@ -24,6 +24,7 @@
 #include "input.h"
 #include "scene.h"
 #include "vm.h"
+#include "xsystem4.h"
 #include "debugger.h"
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
@@ -641,9 +642,21 @@ void handle_events(void)
 		case SDL_WINDOWEVENT:
 			handle_window_event(&e);
 			break;
+		case SDL_APP_DIDENTERFOREGROUND:
+			gfx_swap();
+			break;
 		case SDL_KEYDOWN:
-			if (e.key.keysym.scancode == SDL_SCANCODE_F9)
+			if (e.key.keysym.scancode == SDL_SCANCODE_F9) {
 				vm_stack_trace();
+			} else if (e.key.keysym.scancode == SDL_SCANCODE_F11) {
+				uint32_t flag = SDL_WINDOW_FULLSCREEN_DESKTOP;
+				bool fs = SDL_GetWindowFlags(sdl.window) & flag;
+				SDL_SetWindowFullscreen(sdl.window, fs ? 0 : flag);
+			} else if (e.key.keysym.scancode == SDL_SCANCODE_S) {
+				if (e.key.keysym.mod & (KMOD_LALT | KMOD_RALT)) {
+					screenshot_save();
+				}
+			}
 			// fallthrough
 		case SDL_KEYUP:
 #ifdef __ANDROID__
