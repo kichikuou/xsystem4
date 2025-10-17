@@ -232,7 +232,7 @@ target_link_options(xsystem4 PRIVATE
   -sPROXY_TO_PTHREAD=1
   -sOFFSCREEN_FRAMEBUFFER=1
   -sWASMFS=1
-  -sEXPORTED_RUNTIME_METHODS=FS,ENV
+  -sEXPORTED_RUNTIME_METHODS=FS,ENV,HEAP32
   -sEXPORTED_FUNCTIONS=_main,_malloc,_vm_stack_trace
   --embed-file=${CMAKE_CURRENT_LIST_DIR}/shaders@/shaders
   --emit-tsd=xsystem4.d.ts
