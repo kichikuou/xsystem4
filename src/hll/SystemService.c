@@ -16,6 +16,9 @@
 
 #include <string.h>
 #include <assert.h>
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
 
 #include "system4/ain.h"
 #include "system4/string.h"
@@ -326,6 +329,11 @@ static void SystemService_OpenPlayingManual(void) {
 		return;
 	}
 
+#ifdef __EMSCRIPTEN__
+	MAIN_THREAD_EM_ASM({ Module.shell.open_playing_manual(); });
+	return;
+#else
+
 	char *filename = get_manual_filename();
 
 	char *real_path = realpath_utf8(filename);
@@ -352,6 +360,7 @@ static void SystemService_OpenPlayingManual(void) {
 
 	free(url);
 	free(path_component);
+#endif
 }
 
 //static bool SystemService_IsExistSystemMessage(void);
