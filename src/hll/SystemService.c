@@ -328,12 +328,12 @@ static void SystemService_OpenPlayingManual(void) {
 	if (!SystemService_IsExistPlayingManual()) {
 		return;
 	}
-
-#ifdef __EMSCRIPTEN__
+#ifdef __ANDROID__
+	const int COMMAND_OPEN_PLAYING_MANUAL = 0x8000;
+	SDL_AndroidSendMessage(COMMAND_OPEN_PLAYING_MANUAL, 0);
+#elif defined(__EMSCRIPTEN__)
 	MAIN_THREAD_EM_ASM({ Module.shell.open_playing_manual(); });
-	return;
 #else
-
 	char *filename = get_manual_filename();
 
 	char *real_path = realpath_utf8(filename);
