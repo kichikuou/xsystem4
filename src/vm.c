@@ -2489,9 +2489,11 @@ _Noreturn void vm_exit(int code)
 	sys_exit(code);
 }
 
+#ifdef __EMSCRIPTEN__
 EMSCRIPTEN_KEEPALIVE
 void xsystem4_reset(void)
 {
 	SDL_Event event = { .type = SDL_QUIT };
 	SDL_PushEvent(&event);
 }
+#endif

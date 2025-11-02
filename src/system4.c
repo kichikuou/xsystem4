@@ -431,7 +431,6 @@ void init_filesystem(void) {
 	wasmfs_create_directory("/opfs", 0777, wasmfs_backend);
 	MAIN_THREAD_EM_ASM({ Module.shell.init_filesystem(); });
 }
-#endif
 
 void sys_report(const char *fmt, ...)
 {
@@ -443,6 +442,7 @@ void sys_report(const char *fmt, ...)
 		Module.shell.report_error(UTF8ToString($0));
 	}, msg);
 }
+#endif
 
 int main(int argc, char *argv[])
 {
