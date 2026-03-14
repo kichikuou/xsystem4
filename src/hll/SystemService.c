@@ -72,11 +72,19 @@ HLL_WARN_UNIMPLEMENTED(false, bool, SystemService, AddURLMenu, struct string *ti
 
 static bool SystemService_IsFullScreen(void)
 {
-	return false;
+	return gfx_is_fullscreen();
 }
 
-//bool SystemService_ChangeNormalScreen(void);
-HLL_WARN_UNIMPLEMENTED(false, bool, SystemService, ChangeFullScreen);
+static bool SystemService_ChangeNormalScreen(void)
+{
+	return gfx_set_fullscreen(false);
+}
+
+static bool SystemService_ChangeFullScreen(void)
+{
+	return gfx_set_fullscreen(true);
+}
+
 HLL_WARN_UNIMPLEMENTED(false, bool, SystemService, InitMainWindowPosAndSize);
 
 //static bool SystemService_UpdateView(void);
@@ -371,24 +379,38 @@ static void SystemService_RestrainScreensaver(void) { }
 
 //static int SystemService_Debug_GetUseVideoMemorySize(void);
 
+// Rance 01
 static void SystemService_Rance0123456789(struct string **text)
 {
-	*text = cstr_to_string("-RANCE010ECNAR-"); // ???
+	*text = cstr_to_string("-RANCE010ECNAR-");
 }
 
+// Rance 01 trial edition
 static void SystemService_XXXXX01XXXXXXXX(struct string **text)
 {
 	*text = cstr_to_string("RANCE01RANCEKAKKOII");
 }
 
+// Drapeko
 static void SystemService_Test(struct string **text)
 {
 	*text = cstr_to_string("DELETE ALL 758490275489207548093");
 }
 
+// Drapeko trial edition
 static void SystemService_DRPKT(struct string **text)
 {
 	*text = cstr_to_string("DRPKT QWERTY NUFUAUEO 75849027582754829");
+}
+
+// Rance 9
+static void SystemService_Rance96161988(struct string **text) {
+	*text = cstr_to_string("=Rance99/RANCE99=");
+}
+
+// Pascha3 Plus Contents
+static void SystemService_XXX(struct string **text) {
+	*text = cstr_to_string("FORMAT HDD ERASE 578205024758284076520478254092784789752384758204687293");
 }
 
 static void SystemService_PreLink(void);
@@ -413,7 +435,7 @@ HLL_LIBRARY(SystemService,
 	    HLL_EXPORT(GetGameName, SystemService_GetGameName),
 	    HLL_EXPORT(AddURLMenu, SystemService_AddURLMenu),
 	    HLL_EXPORT(IsFullScreen, SystemService_IsFullScreen),
-	    HLL_TODO_EXPORT(ChangeNormalScreen, SystemService_ChangeNormalScreen),
+	    HLL_EXPORT(ChangeNormalScreen, SystemService_ChangeNormalScreen),
 	    HLL_EXPORT(ChangeFullScreen, SystemService_ChangeFullScreen),
 	    HLL_EXPORT(InitMainWindowPosAndSize, SystemService_InitMainWindowPosAndSize),
 	    HLL_EXPORT(UpdateView, SystemService_UpdateView),
@@ -442,8 +464,10 @@ HLL_LIBRARY(SystemService,
 	    HLL_TODO_EXPORT(Debug_GetUseVideoMemorySize, SystemService_Debug_GetUseVideoMemorySize),
 	    HLL_EXPORT(Rance0123456789, SystemService_Rance0123456789),
 	    HLL_EXPORT(XXXXX01XXXXXXXX, SystemService_XXXXX01XXXXXXXX),
+	    HLL_EXPORT(XXX, SystemService_XXX),
 	    HLL_EXPORT(Test, SystemService_Test),
-	    HLL_EXPORT(DRPKT, SystemService_DRPKT)
+	    HLL_EXPORT(DRPKT, SystemService_DRPKT),
+	    HLL_EXPORT(Rance96161988, SystemService_Rance96161988)
 	);
 
 static struct ain_hll_function *get_fun(int libno, const char *name)

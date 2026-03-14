@@ -1,4 +1,4 @@
-/* Copyright (C) 2023 kichikuou <KichikuouChrome@gmail.com>
+/* Copyright (C) 2026 kichikuou <KichikuouChrome@gmail.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -14,13 +14,19 @@
  * along with this program; if not, see <http://gnu.org/licenses/>.
  */
 
-uniform sampler2D tex;
+#include "hll.h"
 
-in vec2 tex_coord;
-out vec4 frag_color;
-
-void main() {
-	vec4 texel = texture(tex, tex_coord);
-	float gray = dot(texel.rgb, vec3(0.299, 0.587, 0.114));
-	frag_color = vec4(vec3(gray), texel.a);
+static int ValueEncryption_Get(int code, int backup_code, int xor_key)
+{
+	return code;
 }
+
+static void ValueEncryption_Set(int value, int *code, int *backup_code, int xor_key)
+{
+	*code = *backup_code = value;
+}
+
+HLL_LIBRARY(ValueEncryption,
+	    HLL_EXPORT(Get, ValueEncryption_Get),
+	    HLL_EXPORT(Set, ValueEncryption_Set)
+	    );

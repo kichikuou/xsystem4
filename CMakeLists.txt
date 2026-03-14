@@ -113,6 +113,7 @@ target_sources(xsystem4 PRIVATE
 
   src/hll/ACXLoader.c
   src/hll/ADVSYS.c
+  src/hll/AFAFactory.c
   src/hll/AliceLogo.c
   src/hll/AliceLogo2.c
   src/hll/AliceLogo3.c
@@ -161,6 +162,7 @@ target_sources(xsystem4 PRIVATE
   src/hll/InputString.c
   src/hll/KiwiSoundEngine.c
   src/hll/LoadCG.c
+  src/hll/MADLoader.c
   src/hll/MainEXFile.c
   src/hll/MainSurface.c
   src/hll/MamanyoDemo.c
@@ -176,6 +178,8 @@ target_sources(xsystem4 PRIVATE
   src/hll/MusicSystem.c
   src/hll/NewFont.c
   src/hll/OutputLog.c
+  src/hll/P3MapSprite.c
+  src/hll/P3SquareSprite.c
   src/hll/PassRegister.c
   src/hll/PastelChime2.c
   src/hll/PartsEngine.c
@@ -217,6 +221,7 @@ target_sources(xsystem4 PRIVATE
   src/hll/vmSurface.c
   src/hll/vmSystem.c
   src/hll/vmTimer.c
+  src/hll/ValueEncryption.c
   src/hll/VSFile.c
   )
 

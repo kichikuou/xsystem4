@@ -518,7 +518,7 @@ struct model *model_load(struct archive *aar, const char *path)
 		model->bone_map = ht_create(pol->nr_bones * 3 / 2);
 		model->bone_name_map = ht_create(pol->nr_bones * 3 / 2);
 		model->mot_cache = ht_create(16);
-		model->bones = xcalloc(pol->nr_bones, sizeof(struct bone));
+		model->bones = xcalloc_aligned(pol->nr_bones, struct bone);
 		for (uint32_t i = 0; i < pol->nr_bones; i++) {
 			add_bone(model, pol, &pol->bones[i]);
 		}
@@ -594,7 +594,7 @@ void model_free(struct model *model)
 
 	for (int i = 0; i < model->nr_bones; i++)
 		destroy_bone(&model->bones[i]);
-	free(model->bones);
+	xfree_aligned(model->bones);
 	if (model->bone_map)
 		ht_free_int(model->bone_map);
 	if (model->bone_name_map)

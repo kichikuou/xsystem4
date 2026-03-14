@@ -77,6 +77,9 @@ void gfx_fini(void);
 
 Texture *gfx_main_surface(void);
 void gfx_set_window_logical_size(int w, int h);
+bool gfx_set_fullscreen(bool enable);
+bool gfx_is_fullscreen(void);
+void gfx_toggle_fullscreen(void);
 void gfx_update_screen_scale(void);
 void gfx_set_wait_vsync(bool wait);
 float gfx_get_frame_rate(void);
@@ -181,6 +184,8 @@ void gfx_copy_with_alpha_map(Texture *dst, int dx, int dy, Texture *src, int sx,
 void gfx_fill_with_alpha(Texture *dst, int x, int y, int w, int h, int r, int g, int b, int a);
 void gfx_copy_stretch_with_alpha_map(Texture *dst, int dx, int dy, int dw, int dh, Texture *src, int sx, int sy, int sw, int sh);
 void gfx_copy_grayscale(Texture *dst, int dx, int dy, Texture *src, int sx, int sy, int w, int h);
+void gfx_copy_grayscale_with_alpha_map(Texture *dst, int dx, int dy, Texture *src, int sx, int sy, int w, int h);
+void gfx_copy_grayscale_reverse_LR_with_alpha_map(Texture *dst, int dx, int dy, Texture *src, int sx, int sy, int w, int h);
 void gfx_draw_line(Texture *dst, int x0, int y0, int x1, int y1, int r, int g, int b);
 void gfx_draw_line_to_amap(Texture *dst, int x0, int y0, int x1, int y1, int a);
 void gfx_draw_glyph(Texture *dst, float dx, int dy, Texture *glyph, SDL_Color color, float scale_x, float bold_width, bool blend);

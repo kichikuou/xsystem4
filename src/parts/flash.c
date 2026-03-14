@@ -38,7 +38,7 @@ static void clear_display_list(struct parts_flash *f)
 	while (!TAILQ_EMPTY(&f->display_list)) {
 		struct parts_flash_object *obj = TAILQ_FIRST(&f->display_list);
 		TAILQ_REMOVE(&f->display_list, obj, entry);
-		free(obj);
+		xfree_aligned(obj);
 	}
 }
 
@@ -62,7 +62,7 @@ void parts_flash_free(struct parts_flash *f)
 		ht_free_int(f->bitmaps);
 	}
 	if (f->sprites) {
-		ht_foreach_value(f->sprites, free);
+		ht_foreach_value(f->sprites, xfree_aligned);
 		ht_free_int(f->sprites);
 	}
 }
@@ -88,6 +88,7 @@ bool parts_flash_load(struct parts *parts, struct parts_flash *f, struct string 
 
 	f->name = string_dup(filename);
 	f->tag = f->swf->tags;
+	f->has_ended = false;
 	f->stopped = false;
 	f->elapsed = 0;
 	f->current_frame = 0;
@@ -128,10 +129,10 @@ static int do_action(struct parts_flash *f, struct swf_tag_do_action *tag)
 	for (struct swf_action *a = tag->actions; a->code != ACTION_END; a = a->next) {
 		switch (a->code) {
 		case ACTION_PLAY:
-			f->stopped = false;
+			f->has_ended = false;
 			break;
 		case ACTION_STOP:
-			f->stopped = true;
+			f->has_ended = true;
 			break;
 		case ACTION_GOTO_FRAME:
 			seek_frame = ((struct swf_action_goto_frame*)a)->frame;
@@ -153,7 +154,7 @@ static struct parts_flash_object *update_object(struct parts_flash_object *obj, 
 {
 	if (!obj) {
 		if (tag->flags & PLACE_FLAG_HAS_CHARACTER) {
-			obj = xcalloc(1, sizeof(struct parts_flash_object));
+			obj = xcalloc_aligned(1, struct parts_flash_object);
 			obj->depth = tag->depth;
 		} else {
 			ERROR("no object to update (depth=%d)", tag->depth);
@@ -216,7 +217,7 @@ static void remove_object(struct parts_flash *f, struct swf_tag_remove_object2 *
 	TAILQ_FOREACH(p, &f->display_list, entry) {
 		if (p->depth == tag->depth) {
 			TAILQ_REMOVE(&f->display_list, p, entry);
-			free(p);
+			xfree_aligned(p);
 			return;
 		}
 	}
@@ -328,7 +329,7 @@ bool parts_flash_seek(struct parts_flash *f, int frame)
 			// Do nothing.
 			break;
 		case TAG_END:
-			f->stopped = true;
+			f->has_ended = true;
 			break;
 		case TAG_SHOW_FRAME:
 			f->current_frame++;
@@ -371,7 +372,7 @@ bool parts_flash_seek(struct parts_flash *f, int frame)
 
 bool parts_flash_update(struct parts_flash *f, int passed_time)
 {
-	if (!f->swf || f->stopped)
+	if (!f->swf || f->has_ended || f->stopped)
 		return false;
 	f->elapsed += passed_time;
 	int delta_frame = muldiv(f->elapsed, f->swf->frame_rate, 256000);
@@ -379,6 +380,13 @@ bool parts_flash_update(struct parts_flash *f, int passed_time)
 		return false;
 	f->elapsed -= muldiv(delta_frame, 256000, f->swf->frame_rate);
 	return parts_flash_seek(f, f->current_frame + delta_frame);
+}
+
+bool PE_ExistsFlashFile(struct string *flash_filename)
+{
+	if (!flash_filename)
+		return false;
+	return asset_exists_by_name(ASSET_FLASH, flash_filename->text, NULL);
 }
 
 bool PE_SetPartsFlash(int parts_no, struct string *flash_filename, int state)
@@ -425,6 +433,7 @@ bool PE_BackPartsFlashBeginFrame(int parts_no, int state)
 	struct parts_flash *f = parts_get_flash(parts, state);
 	if (!f->swf)
 		return false;
+	f->has_ended = false;
 	if (parts_flash_seek(f, 1))
 		parts_dirty(parts);
 	f->elapsed = 0;

@@ -102,6 +102,7 @@ void PE_SetPartsRotateX(int parts_no, float rot_x);
 void PE_SetPartsRotateY(int parts_no, float rot_y);
 void PE_SetPartsRotateZ(int parts_no, float rot_z);
 float PE_GetPartsRotateZ(int parts_no);
+void PE_SetPartsAlphaClipperPartsNumber(int parts_no, int alpha_clipper_parts_no);
 void PE_SetPartsPixelDecide(int PartsNumber, bool pixel_decide);
 bool PE_SetThumbnailReductionSize(int reduction_size);
 bool PE_SetThumbnailMode(bool Mode);
@@ -131,6 +132,8 @@ bool PE_AddDrawCutCGToPartsConstructionProcess(int parts_no, struct string *cg_n
 		int dx, int dy, int dw, int dh, int sx, int sy, int sw, int sh, int interp_type, int state);
 bool PE_AddCopyCutCGToPartsConstructionProcess(int parts_no, struct string *cg_name,
 		int dx, int dy, int dw, int dh, int sx, int sy, int sw, int sh, int interp_type, int state);
+bool PE_AddGrayFilterToPartsConstructionProcess(int parts_no, int x, int y, int w, int h,
+		bool full_size, int state);
 bool PE_AddCopyTextToPartsConstructionProcess(int parts_no, int x, int y, struct string *text,
 		int type, int size, int r, int g, int b, float bold_weight,
 		int edge_r, int edge_g, int edge_b, float edge_weight,
@@ -221,6 +224,7 @@ bool PE_SetTextCharSpace(int parts_no, int char_space, int state);
 bool PE_SetTextLineSpace(int parts_no, int line_space, int state);
 
 // flash.c
+bool PE_ExistsFlashFile(struct string *flash_filename);
 bool PE_SetPartsFlash(int parts_no, struct string *flash_filename, int state);
 bool PE_IsPartsFlashEnd(int parts_no, int state);
 int PE_GetPartsFlashCurrentFrameNumber(int parts_no, int state);

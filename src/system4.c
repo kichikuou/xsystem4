@@ -453,7 +453,6 @@ int main(int argc, char *argv[])
 	sys_error_handler = error_handler;
 #endif
 
-	initialize_instructions();
 	char *ainfile;
 	int err = AIN_SUCCESS;
 	bool audit = false;

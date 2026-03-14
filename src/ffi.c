@@ -417,6 +417,7 @@ void hll_call(int libno, int fno)
 extern struct static_library lib_ACXLoader;
 extern struct static_library lib_ACXLoaderP2;
 extern struct static_library lib_ADVSYS;
+extern struct static_library lib_AFAFactory;
 extern struct static_library lib_AliceLogo;
 extern struct static_library lib_AliceLogo2;
 extern struct static_library lib_AliceLogo3;
@@ -468,6 +469,7 @@ extern struct static_library lib_InputDevice;
 extern struct static_library lib_InputString;
 extern struct static_library lib_KiwiSoundEngine;
 extern struct static_library lib_LoadCG;
+extern struct static_library lib_MADLoader;
 extern struct static_library lib_MainEXFile;
 extern struct static_library lib_MainSurface;
 extern struct static_library lib_MamanyoDemo;
@@ -483,6 +485,8 @@ extern struct static_library lib_MsgSkip;
 extern struct static_library lib_MusicSystem;
 extern struct static_library lib_NewFont;
 extern struct static_library lib_OutputLog;
+extern struct static_library lib_P3MapSprite;
+extern struct static_library lib_P3SquareSprite;
 extern struct static_library lib_PassRegister;
 extern struct static_library lib_PastelChime2;
 extern struct static_library lib_PartsEngine;
@@ -527,12 +531,14 @@ extern struct static_library lib_vmString;
 extern struct static_library lib_vmSurface;
 extern struct static_library lib_vmSystem;
 extern struct static_library lib_vmTimer;
+extern struct static_library lib_ValueEncryption;
 extern struct static_library lib_VSFile;
 
 static struct static_library *static_libraries[] = {
 	&lib_ACXLoader,
 	&lib_ACXLoaderP2,
 	&lib_ADVSYS,
+	&lib_AFAFactory,
 	&lib_AliceLogo,
 	&lib_AliceLogo2,
 	&lib_AliceLogo3,
@@ -584,6 +590,7 @@ static struct static_library *static_libraries[] = {
 	&lib_InputString,
 	&lib_KiwiSoundEngine,
 	&lib_LoadCG,
+	&lib_MADLoader,
 	&lib_MainEXFile,
 	&lib_MainSurface,
 	&lib_MamanyoDemo,
@@ -599,6 +606,8 @@ static struct static_library *static_libraries[] = {
 	&lib_MusicSystem,
 	&lib_NewFont,
 	&lib_OutputLog,
+	&lib_P3MapSprite,
+	&lib_P3SquareSprite,
 	&lib_PassRegister,
 	&lib_PastelChime2,
 	&lib_PartsEngine,
@@ -643,6 +652,7 @@ static struct static_library *static_libraries[] = {
 	&lib_vmSurface,
 	&lib_vmSystem,
 	&lib_vmTimer,
+	&lib_ValueEncryption,
 	&lib_VSFile,
 	NULL
 };

@@ -38,7 +38,7 @@ enum RE_plugin_version re_plugin_version;
 
 static struct RE_instance *create_instance(struct RE_plugin *plugin)
 {
-	struct RE_instance *instance = xcalloc(1, sizeof(struct RE_instance));
+	struct RE_instance *instance = xcalloc_aligned(1, struct RE_instance);
 	instance->plugin = plugin;
 	for (int i = 0; i < RE_NR_INSTANCE_TARGETS; i++)
 		instance->target[i] = -1;
@@ -94,7 +94,7 @@ static void unload_instance(struct RE_instance *instance)
 static void free_instance(struct RE_instance *instance)
 {
 	unload_instance(instance);
-	free(instance);
+	xfree_aligned(instance);
 }
 
 static void RE_back_cg_init(struct RE_back_cg *bcg)
@@ -229,7 +229,7 @@ struct RE_plugin *RE_plugin_new(enum RE_plugin_version version)
 	if (!aar)
 		return NULL;
 
-	struct RE_plugin *plugin = xcalloc(1, sizeof(struct RE_plugin));
+	struct RE_plugin *plugin = xcalloc_aligned(1, struct RE_plugin);
 	plugin->plugin.name = "ReignEngine";
 	plugin->plugin.update = RE_render;
 	plugin->plugin.to_json = RE_to_json;
@@ -263,7 +263,7 @@ void RE_plugin_free(struct RE_plugin *plugin)
 		RE_renderer_free(plugin->renderer);
 	for (int i = 0; i < RE_NR_BACK_CGS; i++)
 		RE_back_cg_destroy(&plugin->back_cg[i]);
-	free(plugin);
+	xfree_aligned(plugin);
 }
 
 bool RE_plugin_bind(struct RE_plugin *plugin, int sprite)

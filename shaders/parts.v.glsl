@@ -1,4 +1,4 @@
-/* Copyright (C) 2023 kichikuou <KichikuouChrome@gmail.com>
+/* Copyright (C) 2019 Nunuhara Cabbage <nunuhara@haniwa.technology>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -14,13 +14,18 @@
  * along with this program; if not, see <http://gnu.org/licenses/>.
  */
 
-uniform sampler2D tex;
+uniform mat4 world_transform;
+uniform mat4 view_transform;
+uniform mat4 inv_clipper_transform;
 
-in vec2 tex_coord;
-out vec4 frag_color;
+in vec4 vertex_pos;
+in vec2 vertex_uv;
+out vec2 tex_coord;
+out vec2 clip_coord;
 
 void main() {
-	vec4 texel = texture(tex, tex_coord);
-	float gray = dot(texel.rgb, vec3(0.299, 0.587, 0.114));
-	frag_color = vec4(vec3(gray), texel.a);
+	vec4 world_pos = world_transform * vertex_pos;
+	gl_Position = view_transform * world_pos;
+	tex_coord = vertex_uv;
+	clip_coord = (inv_clipper_transform * world_pos).xy;
 }

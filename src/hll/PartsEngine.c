@@ -36,6 +36,11 @@ static void PartsEngine_Update(int passed_time, bool is_skip, bool message_windo
 	PE_Update(passed_time, message_window_show);
 }
 
+static void PartsEngine_Update_Pascha3PC(struct string *xxx1, struct string *xxx2, int passed_time, bool is_skip, bool message_window_show)
+{
+	PE_Update(passed_time, message_window_show);
+}
+
 // Oyako Rankan
 static bool PartsEngine_AddDrawCutCGToPartsConstructionProcess_old(int parts_no,
 		struct string *cg_name, int dx, int dy, int sx, int sy, int w, int h,
@@ -121,7 +126,7 @@ HLL_LIBRARY(PartsEngine,
 	    HLL_EXPORT(StartPartsFlash, PE_StartPartsFlash),
 	    HLL_EXPORT(GoFramePartsFlash, PE_GoFramePartsFlash),
 	    HLL_EXPORT(GetPartsFlashEndFrame, PE_GetPartsFlashEndFrame),
-	    HLL_TODO_EXPORT(ExistsFlashFile, PE_ExistsFlashFile),
+	    HLL_EXPORT(ExistsFlashFile, PE_ExistsFlashFile),
 	    HLL_EXPORT(ClearPartsConstructionProcess, PE_ClearPartsConstructionProcess),
 	    HLL_EXPORT(AddCreateToPartsConstructionProcess, PE_AddCreateToPartsConstructionProcess),
 	    HLL_EXPORT(AddCreatePixelOnlyToPartsConstructionProcess, PE_AddCreatePixelOnlyToPartsConstructionProcess),
@@ -134,7 +139,7 @@ HLL_LIBRARY(PartsEngine,
 	    HLL_EXPORT(AddDrawRectToPartsConstructionProcess, PE_AddDrawRectToPartsConstructionProcess),
 	    HLL_EXPORT(AddDrawCutCGToPartsConstructionProcess, PartsEngine_AddDrawCutCGToPartsConstructionProcess_old),
 	    HLL_EXPORT(AddCopyCutCGToPartsConstructionProcess, PartsEngine_AddCopyCutCGToPartsConstructionProcess_old),
-	    HLL_TODO_EXPORT(AddGrayFilterToPartsConstructionProcess, PartsEngine_AddGrayFilterToPartsConstructionProcess),
+	    HLL_EXPORT(AddGrayFilterToPartsConstructionProcess, PE_AddGrayFilterToPartsConstructionProcess),
 	    HLL_TODO_EXPORT(AddAddFilterToPartsConstructionProcess, PartsEngine_AddAddFilterToPartsConstructionProcess),
 	    HLL_TODO_EXPORT(AddMulFilterToPartsConstructionProcess, PartsEngine_AddMulFilterToPartsConstructionProcess),
 	    HLL_EXPORT(BuildPartsConstructionProcess, PE_BuildPartsConstructionProcess),
@@ -214,7 +219,7 @@ HLL_LIBRARY(PartsEngine,
 	    HLL_EXPORT(SetPartsRotateX, PE_SetPartsRotateX),
 	    HLL_EXPORT(SetPartsRotateY, PE_SetPartsRotateY),
 	    HLL_EXPORT(SetPartsRotateZ, PE_SetPartsRotateZ),
-	    HLL_TODO_EXPORT(SetPartsAlphaClipperPartsNumber, PartsEngine_SetPartsAlphaClipperPartsNumber),
+	    HLL_EXPORT(SetPartsAlphaClipperPartsNumber, PE_SetPartsAlphaClipperPartsNumber),
 	    HLL_EXPORT(SetPartsPixelDecide, PE_SetPartsPixelDecide),
 	    HLL_EXPORT(IsCursorIn, PE_IsCursorIn),
 	    HLL_EXPORT(SetThumbnailReductionSize, PE_SetThumbnailReductionSize),
@@ -245,5 +250,10 @@ static void PartsEngine_PreLink(void)
 	if (fun && fun->nr_arguments == 12) {
 		static_library_replace(&lib_PartsEngine, "AddCopyCutCGToPartsConstructionProcess",
 				PE_AddCopyCutCGToPartsConstructionProcess);
+	}
+	fun = get_fun(libno, "Update");
+	if (fun && fun->nr_arguments == 5) {
+		static_library_replace(&lib_PartsEngine, "Update",
+				PartsEngine_Update_Pascha3PC);
 	}
 }
