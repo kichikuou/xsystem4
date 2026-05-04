@@ -103,7 +103,12 @@ enum parts_type {
 	PARTS_VGAUGE,
 	PARTS_CONSTRUCTION_PROCESS,
 	PARTS_FLASH,
-#define PARTS_NR_TYPES (PARTS_FLASH+1)
+	PARTS_FLAT,
+	PARTS_MOVIE,
+	PARTS_RECT_DETECTION,
+	PARTS_LAYOUT_BOX,
+	PARTS_3DLAYER,
+#define PARTS_NR_TYPES (PARTS_3DLAYER+1)
 };
 
 struct parts_common {
@@ -124,7 +129,7 @@ struct parts_text {
 	struct parts_common common;
 	unsigned nr_lines;
 	struct parts_text_line *lines;
-	unsigned line_space;
+	int line_space;
 	struct { float x; int y; } cursor;
 	struct text_style ts;
 };
@@ -173,6 +178,7 @@ struct parts_gauge {
 	float rate;
 };
 
+// Serialized in save data. Do not reorder.
 enum parts_cp_op_type {
 	PARTS_CP_CREATE,
 	PARTS_CP_CREATE_PIXEL_ONLY,
@@ -186,7 +192,8 @@ enum parts_cp_op_type {
 	PARTS_CP_DRAW_TEXT,
 	PARTS_CP_COPY_TEXT,
 	PARTS_CP_GRAY_FILTER,
-#define PARTS_NR_CP_TYPES (PARTS_CP_GRAY_FILTER+1)
+	PARTS_CP_FILL_WITH_ALPHA,
+#define PARTS_NR_CP_TYPES (PARTS_CP_FILL_WITH_ALPHA+1)
 };
 
 struct parts_cp_create {
@@ -258,6 +265,13 @@ enum parts_flash_blend_mode {
 	PARTS_FLASH_BLEND_HARDLIGHT  = 14,
 };
 
+enum parts_draw_filter {
+	PARTS_DRAW_FILTER_NORMAL   = 0,
+	PARTS_DRAW_FILTER_ADDITIVE = 1,
+	PARTS_DRAW_FILTER_MULTIPLY = 2,
+	PARTS_DRAW_FILTER_SCREEN   = 3,
+};
+
 struct parts_flash_object {
 	TAILQ_ENTRY(parts_flash_object) entry;
 	uint16_t depth;
@@ -283,6 +297,67 @@ struct parts_flash {
 	TAILQ_HEAD(, parts_flash_object) display_list;
 };
 
+struct flat_layer_state {
+	int current_frame;
+	bool stopped;
+	bool suppress_advance;
+	int jump_target;  // pending jump frame, -1 = none
+	// Per-timeline: last matched script key index for change detection
+	// (-2 = uninitialized, -1 = no match, >= 0 = key index)
+	int *last_script_keys;
+	// Per-timeline: child layer state (for TIMELINE libs), NULL otherwise
+	struct flat_layer_state **children;
+	size_t nr_timelines;
+};
+
+struct parts_flat {
+	struct parts_common common;
+	struct string *name;
+	struct flat *flat;
+	bool stopped;
+	bool needs_advance;
+	unsigned elapsed;
+	int end_frame;
+	int pending_seek_delta;
+	struct flat_layer_state *root_state;
+	Texture *textures;  // indexed by library index (only CG libs have valid textures)
+	size_t nr_textures;
+};
+
+struct parts_movie {
+	struct parts_common common;
+	int sprite_no;  // SACT sprite number used as movie render target
+};
+
+enum parts_layout_type {
+	PARTS_LAYOUT_FREE       = 0,  // no automatic layout
+	PARTS_LAYOUT_VERTICAL   = 1,
+	PARTS_LAYOUT_HORIZONTAL = 2,
+};
+
+// In AliceSoft's PartsEngine implementation, LayoutBox is a component type
+// that is NOT per-state. We store it per-state for uniformity with other
+// component types, but parts_get_layout_box() and all code in layoutbox.c
+// operate on states[0] only. This is safe as long as game scripts never
+// convert a LayoutBox parts to/from another component type.
+struct parts_layout_box {
+	struct parts_common common;
+	enum parts_layout_type layout_type;
+	bool wrap;
+	int wrap_size;
+	int align;
+	int padding_top;
+	int padding_bottom;
+	int padding_left;
+	int padding_right;
+};
+
+struct parts_3dlayer {
+	struct parts_common common;
+	int plugin;    // ReignEngine plugin handle (-1 = none)
+	int sprite_no; // SACT sprite used as render target
+};
+
 struct parts_state {
 	enum parts_type type;
 	union {
@@ -294,6 +369,10 @@ struct parts_state {
 		struct parts_gauge gauge;
 		struct parts_construction_process cproc;
 		struct parts_flash flash;
+		struct parts_flat flat;
+		struct parts_movie movie;
+		struct parts_layout_box layout_box;
+		struct parts_3dlayer layer3d;
 	};
 };
 
@@ -326,23 +405,48 @@ struct parts {
 	int delegate_index;
 	int sprite_deform;
 	bool clickable;
+	bool pass_cursor;
+	bool lock_input_state;
+	bool want_save;
+	bool draggable;
 	int on_cursor_sound;
 	int on_click_sound;
 	int origin_mode;
 	int pending_parent;
 	int linked_to;
 	int linked_from;
+	bool is_hovered;
+	int hover_time;
 	int draw_filter;
 	bool message_window;
 	int alpha_clipper_parts_no;
+	int margin_top;
+	int margin_bottom;
+	int margin_left;
+	int margin_right;
 	struct parts_motion_list motion;
+	int controller_no;
 };
 
 #define PARTS_LIST_FOREACH(iter) TAILQ_FOREACH(iter, &parts_list, parts_list_entry)
+#define PARTS_LIST_FOREACH_REVERSE(iter) TAILQ_FOREACH_REVERSE(iter, &parts_list, parts_list, parts_list_entry)
 #define PARTS_FOREACH_CHILD(iter, parent) TAILQ_FOREACH(iter, &parent->children, child_list_entry)
 
 // parts.c
 extern struct parts_list parts_list;
+
+// Controllers are identified by their position in the stack (0 = bottom). The
+// system overlay controller lives outside the stack.
+#define PARTS_CONTROLLER_STACK_MAX 10000
+#define PARTS_CONTROLLER_SYSTEM_OVERLAY PARTS_CONTROLLER_STACK_MAX
+
+struct parts_controller_stack {
+	int nr_controllers;
+	int active;  // stack index or PARTS_CONTROLLER_SYSTEM_OVERLAY
+};
+extern struct parts_controller_stack ctrl_stack;
+extern bool parts_multi_controller;
+
 struct parts *parts_try_get(int parts_no);
 struct parts *parts_get(int parts_no);
 struct parts_cg *parts_get_cg(struct parts *parts, int state);
@@ -353,6 +457,10 @@ struct parts_gauge *parts_get_hgauge(struct parts *parts, int state);
 struct parts_gauge *parts_get_vgauge(struct parts *parts, int state);
 struct parts_construction_process *parts_get_construction_process(struct parts *parts, int state);
 struct parts_flash *parts_get_flash(struct parts *parts, int state);
+struct parts_flat *parts_get_flat(struct parts *parts, int state);
+struct parts_movie *parts_get_movie(struct parts *parts, int state);
+struct parts_layout_box *parts_get_layout_box(struct parts *parts);
+struct parts_3dlayer *parts_get_3dlayer(struct parts *parts, int state);
 void parts_set_pos(struct parts *parts, Point pos);
 void parts_set_global_pos(Point pos);
 void parts_set_dims(struct parts *parts, struct parts_common *common, int w, int h);
@@ -408,8 +516,30 @@ void parts_clear_motion(struct parts *parts);
 void parts_add_motion(struct parts *parts, struct parts_motion *motion);
 
 // input.c
-extern Point parts_prev_pos;
 extern bool parts_began_click;
+void parts_input_reset_drag(struct parts *parts);
+
+// message.c
+enum parts_message_type {
+	PARTS_MSG_MOUSE_ENTER    = 1,
+	PARTS_MSG_MOUSE_MOVE     = 2,
+	PARTS_MSG_MOUSE_LEAVE    = 3,
+	PARTS_MSG_MOUSE_WHEEL    = 4,
+	PARTS_MSG_MOUSE_CLICK    = 5,
+	PARTS_MSG_MOUSE_ON       = 6,
+	PARTS_MSG_DRAG_BEGIN     = 7,
+	PARTS_MSG_DRAGGING       = 8,
+	PARTS_MSG_DRAG_END       = 9,
+	PARTS_MSG_DROP_ENTER     = 10,
+	PARTS_MSG_DROP_ON        = 11,
+	PARTS_MSG_DROPPED        = 12,
+	PARTS_MSG_DROP_LEAVE     = 13,
+	PARTS_MSG_KEY_TRIGGER    = 14,
+	PARTS_MSG_KEY_DOWN       = 15,
+	PARTS_MSG_KEY_UP         = 17,
+};
+
+void parts_msg_push(struct parts* parts, int type, const char *fmt, ...);
 
 // construction.c
 void parts_cp_op_free(struct parts_cp_op *op);
@@ -424,6 +554,15 @@ bool parts_flash_load(struct parts *parts, struct parts_flash *f, struct string 
 bool parts_flash_update(struct parts_flash *f, int passed_time);
 bool parts_flash_seek(struct parts_flash *f, int frame);
 
+// flat.c
+void parts_flat_free(struct parts_flat *f);
+bool parts_flat_load(struct parts *parts, struct parts_flat *f, struct string *filename);
+bool parts_flat_update(struct parts_flat *f, int passed_time);
+int parts_flat_find_library(struct flat *fl, const char *name);
+
+// layoutbox.c
+void parts_do_layout(struct parts *parts);
+
 // debug.c
 struct sprite;
 void parts_debug_init(void);
@@ -433,16 +572,6 @@ cJSON *parts_sprite_to_json(struct sprite *sp, bool verbose);
 static inline bool parts_state_valid(int state)
 {
 	return state >= 0 && state <= 2;
-}
-
-static inline int parts_get_width(struct parts *parts)
-{
-	return parts->states[parts->state].common.w;
-}
-
-static inline int parts_get_height(struct parts *parts)
-{
-	return parts->states[parts->state].common.h;
 }
 
 #endif /* SYSTEM4_PARTS_INTERNAL_H */

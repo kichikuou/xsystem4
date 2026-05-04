@@ -191,6 +191,7 @@ static void save_parts_cp_op(struct iarray_writer *w, struct parts_cp_op *op)
 	case PARTS_CP_FILL:
 	case PARTS_CP_FILL_ALPHA_COLOR:
 	case PARTS_CP_FILL_AMAP:
+	case PARTS_CP_FILL_WITH_ALPHA:
 	case PARTS_CP_DRAW_RECT:
 		iarray_write(w, op->fill.x);
 		iarray_write(w, op->fill.y);
@@ -248,6 +249,7 @@ static struct parts_cp_op *load_parts_cp_op(struct iarray_reader *r)
 	case PARTS_CP_FILL:
 	case PARTS_CP_FILL_ALPHA_COLOR:
 	case PARTS_CP_FILL_AMAP:
+	case PARTS_CP_FILL_WITH_ALPHA:
 	case PARTS_CP_DRAW_RECT:
 		op->fill.x = iarray_read(r);
 		op->fill.y = iarray_read(r);
@@ -334,6 +336,44 @@ static void load_parts_flash(struct iarray_reader *r, struct parts *parts,
 	parts_flash_seek(flash, iarray_read(r));
 }
 
+static void save_parts_flat(struct iarray_writer *w, struct parts_flat *flat)
+{
+	iarray_write_string_or_null(w, flat->name);
+}
+
+static void load_parts_flat(struct iarray_reader *r, struct parts *parts,
+		struct parts_flat *flat)
+{
+	struct string *name = iarray_read_string_or_null(r);
+	parts_flat_load(parts, flat, name);
+	free_string(name);
+	flat->needs_advance = true;
+}
+
+static void save_parts_layout_box(struct iarray_writer *w, struct parts_layout_box *lb)
+{
+	iarray_write(w, lb->layout_type);
+	iarray_write(w, lb->wrap);
+	iarray_write(w, lb->wrap_size);
+	iarray_write(w, lb->align);
+	iarray_write(w, lb->padding_top);
+	iarray_write(w, lb->padding_bottom);
+	iarray_write(w, lb->padding_left);
+	iarray_write(w, lb->padding_right);
+}
+
+static void load_parts_layout_box(struct iarray_reader *r, struct parts_layout_box *lb)
+{
+	lb->layout_type = iarray_read(r);
+	lb->wrap = iarray_read(r);
+	lb->wrap_size = iarray_read(r);
+	lb->align = iarray_read(r);
+	lb->padding_top = iarray_read(r);
+	lb->padding_bottom = iarray_read(r);
+	lb->padding_left = iarray_read(r);
+	lb->padding_right = iarray_read(r);
+}
+
 static void save_parts_state(struct iarray_writer *w, struct parts_state *state)
 {
 	iarray_write(w, state->type);
@@ -344,6 +384,9 @@ static void save_parts_state(struct iarray_writer *w, struct parts_state *state)
 	iarray_write_rectangle(w, &state->common.surface_area);
 	switch (state->type) {
 	case PARTS_UNINITIALIZED:
+	case PARTS_MOVIE:
+	case PARTS_RECT_DETECTION:
+	case PARTS_3DLAYER:
 		break;
 	case PARTS_CG:
 		save_parts_cg(w, &state->cg);
@@ -367,6 +410,12 @@ static void save_parts_state(struct iarray_writer *w, struct parts_state *state)
 	case PARTS_FLASH:
 		save_parts_flash(w, &state->flash);
 		break;
+	case PARTS_FLAT:
+		save_parts_flat(w, &state->flat);
+		break;
+	case PARTS_LAYOUT_BOX:
+		save_parts_layout_box(w, &state->layout_box);
+		break;
 	}
 }
 
@@ -381,6 +430,9 @@ static void load_parts_state(struct iarray_reader *r, struct parts *parts,
 	iarray_read_rectangle(r, &state->common.surface_area);
 	switch (state->type) {
 	case PARTS_UNINITIALIZED:
+	case PARTS_MOVIE:
+	case PARTS_RECT_DETECTION:
+	case PARTS_3DLAYER:
 		break;
 	case PARTS_CG:
 		load_parts_cg(r, parts, &state->cg);
@@ -405,6 +457,12 @@ static void load_parts_state(struct iarray_reader *r, struct parts *parts,
 		break;
 	case PARTS_FLASH:
 		load_parts_flash(r, parts, &state->flash);
+		break;
+	case PARTS_FLAT:
+		load_parts_flat(r, parts, &state->flat);
+		break;
+	case PARTS_LAYOUT_BOX:
+		load_parts_layout_box(r, &state->layout_box);
 		break;
 	}
 }
@@ -504,6 +562,18 @@ static void save_parts(struct iarray_writer *w, struct parts *parts)
 	iarray_write(w, parts->draw_filter);
 	iarray_write(w, parts->message_window);
 	iarray_write(w, parts->alpha_clipper_parts_no);
+	// TODO: once the Rance 9 save format stabilizes, bump save version
+	// and save unconditionally
+	if (parts_multi_controller) {
+		iarray_write(w, parts->controller_no);
+		iarray_write(w, parts->pass_cursor);
+		iarray_write(w, parts->lock_input_state);
+		iarray_write(w, parts->margin_top);
+		iarray_write(w, parts->margin_bottom);
+		iarray_write(w, parts->margin_left);
+		iarray_write(w, parts->margin_right);
+		iarray_write(w, parts->draggable);
+	}
 
 	unsigned motion_count_pos = iarray_writer_pos(w);
 	iarray_write(w, 0); // size of motion list
@@ -543,6 +613,18 @@ static void load_parts(struct iarray_reader *r, int version)
 		parts->message_window = iarray_read(r);
 	if (version > 2)
 		parts->alpha_clipper_parts_no = iarray_read(r);
+	// TODO: once the Rance 9 save format stabilizes, bump save version
+	// and load based on version check
+	if (parts_multi_controller) {
+		parts->controller_no = iarray_read(r);
+		parts->pass_cursor = iarray_read(r);
+		parts->lock_input_state = iarray_read(r);
+		parts->margin_top = iarray_read(r);
+		parts->margin_bottom = iarray_read(r);
+		parts->margin_left = iarray_read(r);
+		parts->margin_right = iarray_read(r);
+		parts->draggable = iarray_read(r);
+	}
 
 	int motion_count = iarray_read(r);
 	for (int i = 0; i < motion_count; i++) {
@@ -594,6 +676,13 @@ static bool parts_engine_save(struct page **buffer, bool save_hidden)
 	if (CURRENT_SAVE_VERSION > 1)
 		save_numeral_fonts(&w);
 
+	// TODO: once the Rance 9 save format stabilizes, bump save version
+	// and save unconditionally
+	if (parts_multi_controller) {
+		iarray_write(&w, ctrl_stack.active);
+		iarray_write(&w, ctrl_stack.nr_controllers);
+	}
+
 	unsigned count_pos = iarray_writer_pos(&w);
 	iarray_write(&w, 0); // size of parts list
 
@@ -601,6 +690,8 @@ static bool parts_engine_save(struct page **buffer, bool save_hidden)
 	struct parts *parts;
 	PARTS_LIST_FOREACH(parts) {
 		if (!save_hidden && !parts->global.show)
+			continue;
+		if (!parts->want_save)
 			continue;
 		save_parts(&w, parts);
 		count++;
@@ -650,6 +741,13 @@ bool PE_Load(struct page **buffer)
 
 	if (version > 1)
 		load_numeral_fonts(&r);
+
+	// TODO: once the Rance 9 save format stabilizes, bump save version
+	// and load based on version check
+	if (parts_multi_controller) {
+		ctrl_stack.active = iarray_read(&r);
+		ctrl_stack.nr_controllers = iarray_read(&r);
+	}
 
 	int nr_parts = iarray_read(&r);
 	if (nr_parts < 0) {

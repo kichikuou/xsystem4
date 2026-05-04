@@ -441,6 +441,7 @@ extern struct static_library lib_DALKDemo;
 extern struct static_library lib_DALKEDemo;
 extern struct static_library lib_Data;
 extern struct static_library lib_DataFile;
+extern struct static_library lib_Discord;
 extern struct static_library lib_DrawDungeon;
 extern struct static_library lib_DrawDungeon2;
 extern struct static_library lib_DrawDungeon14;
@@ -496,6 +497,7 @@ extern struct static_library lib_PlayMovie;
 extern struct static_library lib_ReignEngine;
 extern struct static_library lib_SACT2;
 extern struct static_library lib_SACTDX;
+extern struct static_library lib_SealEngine;
 extern struct static_library lib_SengokuRanceFont;
 extern struct static_library lib_Sound2ex;
 extern struct static_library lib_SoundFilePlayer;
@@ -562,6 +564,7 @@ static struct static_library *static_libraries[] = {
 	&lib_DALKEDemo,
 	&lib_Data,
 	&lib_DataFile,
+	&lib_Discord,
 	&lib_DrawDungeon,
 	&lib_DrawDungeon2,
 	&lib_DrawDungeon14,
@@ -617,6 +620,7 @@ static struct static_library *static_libraries[] = {
 	&lib_ReignEngine,
 	&lib_SACT2,
 	&lib_SACTDX,
+	&lib_SealEngine,
 	&lib_SengokuRanceFont,
 	&lib_Sound2ex,
 	&lib_SoundFilePlayer,

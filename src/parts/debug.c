@@ -110,6 +110,7 @@ static void parts_construction_process_to_json(struct parts_construction_process
 		[PARTS_CP_FILL] = "fill",
 		[PARTS_CP_FILL_ALPHA_COLOR] = "fill_alpha_color",
 		[PARTS_CP_FILL_AMAP] = "fill_amap",
+		[PARTS_CP_FILL_WITH_ALPHA] = "fill_with_alpha",
 		[PARTS_CP_DRAW_RECT] = "draw_rect",
 		[PARTS_CP_DRAW_CUT_CG] = "draw_cut_cg",
 		[PARTS_CP_COPY_CUT_CG] = "copy_cut_cg",
@@ -144,6 +145,7 @@ static void parts_construction_process_to_json(struct parts_construction_process
 		case PARTS_CP_FILL:
 		case PARTS_CP_FILL_ALPHA_COLOR:
 		case PARTS_CP_FILL_AMAP:
+		case PARTS_CP_FILL_WITH_ALPHA:
 		case PARTS_CP_DRAW_RECT:
 			cJSON_AddItemToObjectCS(obj, "rect", tmp = cJSON_CreateObject());
 			cJSON_AddNumberToObject(tmp, "x", op->fill.x);
@@ -198,6 +200,20 @@ static void parts_flash_to_json(struct parts_flash *flash, cJSON *out, bool verb
 	cJSON_AddNumberToObject(out, "current_frame", flash->current_frame);
 }
 
+static void parts_flat_to_json(struct parts_flat *flat, cJSON *out, bool verbose)
+{
+	if (flat->name)
+		cJSON_AddSjisToObject(out, "name", flat->name->text);
+	if (flat->root_state)
+		cJSON_AddNumberToObject(out, "current_frame", flat->root_state->current_frame);
+	cJSON_AddNumberToObject(out, "end_frame", flat->end_frame);
+}
+
+static void parts_movie_to_json(struct parts_movie *movie, cJSON *out, bool verbose)
+{
+	cJSON_AddNumberToObject(out, "sprite_no", movie->sprite_no);
+}
+
 static cJSON *parts_state_to_json(struct parts_state *state, bool verbose)
 {
 	static const char *state_types[PARTS_NR_TYPES] = {
@@ -209,7 +225,8 @@ static cJSON *parts_state_to_json(struct parts_state *state, bool verbose)
 		[PARTS_HGAUGE] = "hgauge",
 		[PARTS_VGAUGE] = "vgauge",
 		[PARTS_CONSTRUCTION_PROCESS] = "construction_process",
-		[PARTS_FLASH] = "flash"
+		[PARTS_FLASH] = "flash",
+		[PARTS_FLAT] = "flat"
 	};
 	const char *type = "invalid";
 	if (state->type >= 0 && state->type < PARTS_NR_TYPES)
@@ -246,6 +263,22 @@ static cJSON *parts_state_to_json(struct parts_state *state, bool verbose)
 		break;
 	case PARTS_FLASH:
 		parts_flash_to_json(&state->flash, obj, verbose);
+		break;
+	case PARTS_FLAT:
+		parts_flat_to_json(&state->flat, obj, verbose);
+		break;
+	case PARTS_MOVIE:
+		parts_movie_to_json(&state->movie, obj, verbose);
+		break;
+	case PARTS_RECT_DETECTION:
+		break;
+	case PARTS_LAYOUT_BOX:
+		cJSON_AddNumberToObject(obj, "layout_type", state->layout_box.layout_type);
+		cJSON_AddNumberToObject(obj, "align", state->layout_box.align);
+		break;
+	case PARTS_3DLAYER:
+		cJSON_AddNumberToObject(obj, "plugin", state->layer3d.plugin);
+		cJSON_AddNumberToObject(obj, "sprite_no", state->layer3d.sprite_no);
 		break;
 	}
 
@@ -357,10 +390,15 @@ cJSON *parts_to_json(struct parts *parts, bool recursive, bool verbose)
 	cJSON_AddItemToObjectCS(obj, "clicked", parts_state_to_json(&parts->states[PARTS_STATE_CLICKED], verbose));
 	cJSON_AddItemToObjectCS(obj, "local", parts_params_to_json(&parts->local, verbose));
 	cJSON_AddItemToObjectCS(obj, "global", parts_params_to_json(&parts->global, verbose));
+	if (parts_multi_controller)
+		cJSON_AddNumberToObject(obj, "controller", parts->controller_no);
 	if (parts->delegate_index >= 0)
 		cJSON_AddNumberToObject(obj, "delegate_index", parts->delegate_index);
 	cJSON_AddNumberToObject(obj, "sprite_deform", parts->sprite_deform);
 	cJSON_AddBoolToObject(obj, "clickable", parts->clickable);
+	cJSON_AddBoolToObject(obj, "pass_cursor", parts->pass_cursor);
+	cJSON_AddBoolToObject(obj, "lock_input_state", parts->lock_input_state);
+	cJSON_AddBoolToObject(obj, "want_save", parts->want_save);
 	if (parts->on_cursor_sound >= 0)
 		cJSON_AddNumberToObject(obj, "on_cursor_sound", parts->on_cursor_sound);
 	if (parts->on_click_sound >= 0)
@@ -498,6 +536,9 @@ static void parts_list_print(struct parts *parts, int indent)
 			case PARTS_CP_FILL_AMAP:
 				sys_message(" fill-amap");
 				break;
+			case PARTS_CP_FILL_WITH_ALPHA:
+				sys_message(" fill-with-alpha");
+				break;
 			case PARTS_CP_DRAW_RECT:
 				sys_message(" draw-rect");
 				break;
@@ -524,9 +565,24 @@ static void parts_list_print(struct parts *parts, int indent)
 	case PARTS_FLASH:
 		sys_message("(flash %s)", display_sjis0(state->flash.name->text));
 		break;
+	case PARTS_FLAT:
+		sys_message("(flat %s)", state->flat.name ? display_sjis0(state->flat.name->text) : "(null)");
+		break;
+	case PARTS_MOVIE:
+		sys_message("(movie sp=%d)", state->movie.sprite_no);
+		break;
+	case PARTS_RECT_DETECTION:
+		sys_message("(rect_detection)");
+		break;
+	case PARTS_LAYOUT_BOX:
+		sys_message("(layout_box type=%d)", state->layout_box.layout_type);
+		break;
+	case PARTS_3DLAYER:
+		sys_message("(3dlayer plugin=%d sp=%d)", state->layer3d.plugin, state->layer3d.sprite_no);
+		break;
 	}
 
-	sys_message(" @ z=%d (%d)\n", parts->global.z, parts->local.z);
+	sys_message(" @ controller=%d z=%d (%d)\n", parts->controller_no, parts->global.z, parts->local.z);
 
 	struct parts *child;
 	PARTS_FOREACH_CHILD(child, parts) {

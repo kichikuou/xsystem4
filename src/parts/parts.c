@@ -26,13 +26,21 @@
 #include "vm/page.h"
 #include "xsystem4.h"
 #include "sact.h"
+#include "sprite.h"
 #include "parts.h"
 #include "parts_internal.h"
+#include "reign.h"
 
 struct parts_list parts_list = TAILQ_HEAD_INITIALIZER(parts_list);
 static struct parts_list dirty_list = TAILQ_HEAD_INITIALIZER(dirty_list);
 static struct hash_table *parts_table = NULL;
 static Point root_pos = { 0, 0 };
+
+struct parts_controller_stack ctrl_stack;
+bool parts_multi_controller;
+
+static void ctrl_stack_init(void);
+static void ctrl_stack_fini(void);
 
 #define PARTS_PARAMS_INITIALIZER (struct parts_params) { \
 	.z = 1, \
@@ -55,6 +63,7 @@ static void parts_init(struct parts *parts)
 	parts->local = PARTS_PARAMS_INITIALIZER;
 	parts->global = PARTS_PARAMS_INITIALIZER;
 	parts->delegate_index = -1;
+	parts->want_save = true;
 	parts->on_cursor_sound = -1;
 	parts->on_click_sound = -1;
 	parts->origin_mode = 1;
@@ -86,17 +95,38 @@ static void dirty_list_remove(struct parts *parts)
 		TAILQ_REMOVE(&dirty_list, parts, dirty_list_entry);
 }
 
+static int parts_get_sprite_z(struct parts *parts)
+{
+	if (!parts_multi_controller)
+		return parts->global.z;
+	// The system overlay controller sorts above any in-stack controller.
+	return parts->controller_no;
+}
+
+static int parts_get_sprite_z2(struct parts *parts)
+{
+	if (!parts_multi_controller)
+		return 0;
+	return parts->global.z;
+}
+
 static void parts_list_insert(struct parts *parts)
 {
+	int z = parts_get_sprite_z(parts);
+	int z2 = parts_get_sprite_z2(parts);
+	parts->sp.z = z;
+	parts->sp.z2 = z2;
 	struct parts *p;
 	PARTS_LIST_FOREACH(p) {
-		if (p->global.z > parts->global.z) {
+		int pz = parts_get_sprite_z(p);
+		int pz2 = parts_get_sprite_z2(p);
+		if (pz > z || (pz == z && pz2 > z2)) {
 			TAILQ_INSERT_BEFORE(p, parts, parts_list_entry);
-			parts_engine_dirty();
-			return;
+			goto done;
 		}
 	}
 	TAILQ_INSERT_TAIL(&parts_list, parts, parts_list_entry);
+done:
 	parts_engine_dirty();
 	scene_register_sprite(&parts->sp);
 }
@@ -112,7 +142,6 @@ void parts_list_resort(struct parts *parts)
 	// TODO: this could be optimized
 	parts_list_remove(parts);
 	parts_list_insert(parts);
-	scene_set_sprite_z(&parts->sp, parts->global.z);
 }
 
 struct parts *parts_try_get(int parts_no)
@@ -131,6 +160,7 @@ struct parts *parts_get(int parts_no)
 
 	struct parts *parts = parts_alloc();
 	parts->no = parts_no;
+	parts->controller_no = ctrl_stack.active;
 	slot->value = parts;
 	parts_list_insert(parts);
 	return parts;
@@ -145,6 +175,8 @@ static void parts_state_free(struct parts_state *state)
 {
 	switch (state->type) {
 	case PARTS_UNINITIALIZED:
+	case PARTS_RECT_DETECTION:
+	case PARTS_LAYOUT_BOX:
 		break;
 	case PARTS_CG:
 		gfx_delete_texture(&state->common.texture);
@@ -174,6 +206,22 @@ static void parts_state_free(struct parts_state *state)
 		break;
 	case PARTS_FLASH:
 		parts_flash_free(&state->flash);
+		break;
+	case PARTS_FLAT:
+		parts_flat_free(&state->flat);
+		break;
+	case PARTS_MOVIE:
+		// The texture is owned by the SACT sprite.
+		state->common.texture.handle = 0;
+		if (state->movie.sprite_no >= 0)
+			sact_SP_Delete(state->movie.sprite_no);
+		break;
+	case PARTS_3DLAYER:
+		state->common.texture.handle = 0;
+		if (state->layer3d.plugin >= 0)
+			ReignEngine_ReleasePlugin(state->layer3d.plugin);
+		if (state->layer3d.sprite_no >= 0)
+			sact_SP_Delete(state->layer3d.sprite_no);
 		break;
 	}
 	memset(state, 0, sizeof(struct parts_state));
@@ -216,10 +264,23 @@ void parts_state_reset(struct parts_state *state, enum parts_type type)
 		state->gauge.cg_no = -1;
 		state->gauge.rate = 0.0f;
 		break;
+	case PARTS_3DLAYER:
+		state->layer3d.plugin = -1;
+		state->layer3d.sprite_no = -1;
+		break;
 	case PARTS_UNINITIALIZED:
 	case PARTS_CG:
 	case PARTS_ANIMATION:
 	case PARTS_FLASH:
+	case PARTS_FLAT:
+	case PARTS_RECT_DETECTION:
+		break;
+	case PARTS_MOVIE:
+		state->movie.sprite_no = -1;
+		break;
+	case PARTS_LAYOUT_BOX:
+		state->layout_box.layout_type = PARTS_LAYOUT_VERTICAL;
+		state->layout_box.align = 1;
 		break;
 	}
 }
@@ -286,6 +347,38 @@ struct parts_flash *parts_get_flash(struct parts *parts, int state)
 		parts_state_reset(&parts->states[state], PARTS_FLASH);
 	}
 	return &parts->states[state].flash;
+}
+
+struct parts_flat *parts_get_flat(struct parts *parts, int state)
+{
+	if (parts->states[state].type != PARTS_FLAT) {
+		parts_state_reset(&parts->states[state], PARTS_FLAT);
+	}
+	return &parts->states[state].flat;
+}
+
+struct parts_movie *parts_get_movie(struct parts *parts, int state)
+{
+	if (parts->states[state].type != PARTS_MOVIE) {
+		parts_state_reset(&parts->states[state], PARTS_MOVIE);
+	}
+	return &parts->states[state].movie;
+}
+
+struct parts_layout_box *parts_get_layout_box(struct parts *parts)
+{
+	if (parts->states[0].type != PARTS_LAYOUT_BOX) {
+		parts_state_reset(&parts->states[0], PARTS_LAYOUT_BOX);
+	}
+	return &parts->states[0].layout_box;
+}
+
+struct parts_3dlayer *parts_get_3dlayer(struct parts *parts, int state)
+{
+	if (parts->states[state].type != PARTS_3DLAYER) {
+		parts_state_reset(&parts->states[state], PARTS_3DLAYER);
+	}
+	return &parts->states[state].layer3d;
 }
 
 static Point calculate_offset(int mode, int w, int h)
@@ -824,7 +917,11 @@ bool parts_numeral_set_number(struct parts *parts, struct parts_numeral *num, in
 
 void parts_set_state(struct parts *parts, enum parts_state_type state)
 {
-	if (parts->state != state && parts->states[state].type != PARTS_UNINITIALIZED) {
+	if (parts->lock_input_state)
+		return;
+	while (state > PARTS_STATE_DEFAULT && parts->states[state].type == PARTS_UNINITIALIZED)
+		state--;
+	if (parts->state != state) {
 		parts->state = state;
 		parts_dirty(parts);
 	}
@@ -838,20 +935,10 @@ void parts_set_surface_area(struct parts *parts, struct parts_common *common, in
 	parts_common_recalculate_hitbox(parts, common);
 }
 
-static void parts_update_loop(struct parts *parts, int passed_time)
+static bool parts_animation_update(struct parts_animation *anim, int passed_time)
 {
-	if (parts->states[parts->state].type == PARTS_FLASH) {
-		if (parts_flash_update(&parts->states[parts->state].flash, passed_time))
-			parts_dirty(parts);
-		return;
-	}
-
-	if (parts->states[parts->state].type != PARTS_ANIMATION)
-		return;
-
-	struct parts_animation *anim = &parts->states[parts->state].anim;
 	if (passed_time <= 0 || !anim->nr_frames)
-		return;
+		return false;
 
 	const unsigned elapsed = anim->elapsed + passed_time;
 	const unsigned frame_diff = elapsed / anim->frame_time;
@@ -861,10 +948,31 @@ static void parts_update_loop(struct parts *parts, int passed_time)
 		anim->elapsed = remainder;
 		anim->current_frame = (anim->current_frame + frame_diff) % anim->nr_frames;
 		anim->common.texture = anim->frames[anim->current_frame];
-		parts_dirty(parts);
+		return true;
 	} else {
 		anim->elapsed = elapsed;
+		return false;
 	}
+}
+
+static void parts_update_loop(struct parts *parts, int passed_time)
+{
+	bool dirty = false;
+	switch (parts->states[parts->state].type) {
+	case PARTS_ANIMATION:
+		dirty = parts_animation_update(&parts->states[parts->state].anim, passed_time);
+		break;
+	case PARTS_FLASH:
+		dirty = parts_flash_update(&parts->states[parts->state].flash, passed_time);
+		break;
+	case PARTS_FLAT:
+		dirty = parts_flat_update(&parts->states[parts->state].flat, passed_time);
+		break;
+	default:
+		break;
+	}
+	if (dirty)
+		parts_dirty(parts);
 }
 
 static void parts_update_animation(int passed_time)
@@ -882,6 +990,7 @@ void parts_release(int parts_no)
 		return;
 
 	struct parts *parts = slot->value;
+	parts_input_reset_drag(parts);
 	parts_clear_motion(parts);
 	for (int i = 0; i < PARTS_NR_STATES; i++) {
 		parts_state_free(&parts->states[i]);
@@ -927,6 +1036,14 @@ void parts_release_all(void)
 
 static bool parts_engine_initialized = false;
 
+void PE_enable_multi_controller(void)
+{
+	if (parts_multi_controller)
+		return;
+	assert(!parts_engine_initialized);
+	parts_multi_controller = true;
+}
+
 bool PE_Init(void)
 {
 	if (parts_engine_initialized)
@@ -936,6 +1053,7 @@ bool PE_Init(void)
 	parts_table = ht_create(1024);
 	parts_render_init();
 	parts_debug_init();
+	ctrl_stack_init();
 	parts_engine_initialized = true;
 	return true;
 }
@@ -943,6 +1061,8 @@ bool PE_Init(void)
 void PE_Reset(void)
 {
 	PE_ReleaseAllParts();
+	PE_ReleaseMessage();
+	ctrl_stack_fini();
 	sact_ModuleFini();
 }
 
@@ -980,7 +1100,8 @@ static void parts_update_component(struct parts *parts)
 	if (parts->parent) {
 		parts_combine_params(&parts->parent->global, &parts->local, &parts->global);
 	}
-	if (parts->global.z != parts->sp.z) {
+	if (parts_get_sprite_z(parts) != parts->sp.z
+			|| parts_get_sprite_z2(parts) != parts->sp.z2) {
 		parts_list_resort(parts);
 	}
 
@@ -988,6 +1109,8 @@ static void parts_update_component(struct parts *parts)
 		TAILQ_REMOVE(&dirty_list, parts, dirty_list_entry);
 		parts->dirty = false;
 	}
+
+	parts_do_layout(parts);
 
 	struct parts *child;
 	PARTS_FOREACH_CHILD(child, parts) {
@@ -1011,6 +1134,10 @@ void PE_UpdateComponent(possibly_unused int passed_time)
 			}
 			parts->parent = parent;
 			TAILQ_INSERT_TAIL(&parent->children, parts, child_list_entry);
+
+			// if parent is layout box, mark it dirty so that it can re-layout its children
+			if (parent->states[0].type == PARTS_LAYOUT_BOX)
+				parts_component_dirty(parent);
 		}
 		// TODO: should the child be orphaned if it already has a parent and an invalid
 		//       parent no is given?
@@ -1140,6 +1267,18 @@ bool PE_SetPartsCGSurfaceArea(int parts_no, int x, int y, int w, int h, int stat
 	struct parts_cg *cg = parts_get_cg(parts, state);
 	parts_set_surface_area(parts, &cg->common, x, y, w, h);
 	return true;
+}
+
+void PE_GetPartsCGSurfaceArea(int parts_no, int *x, int *y, int *w, int *h, int state)
+{
+	if (!parts_state_valid(--state))
+		return;
+
+	struct parts_cg *cg = parts_get_cg(parts_get(parts_no), state);
+	*x = cg->common.surface_area.x;
+	*y = cg->common.surface_area.y;
+	*w = cg->common.surface_area.w;
+	*h = cg->common.surface_area.h;
 }
 
 int PE_GetPartsCGNumber(int parts_no, int state)
@@ -1548,6 +1687,25 @@ void PE_ReleaseAllPartsWithoutSystem(void)
 	parts_release_all();
 }
 
+void PE_ReleaseAllWithoutSystem(struct page **erase_number_list)
+{
+	// Release all parts not belonging to the system overlay controller
+	struct parts *parts = TAILQ_FIRST(&parts_list);
+	while (parts) {
+		struct parts *next = TAILQ_NEXT(parts, parts_list_entry);
+		if (parts->controller_no != PARTS_CONTROLLER_SYSTEM_OVERLAY) {
+			*erase_number_list = array_pushback(*erase_number_list,
+					(union vm_value){.i = parts->no}, AIN_ARRAY_INT, -1);
+			parts_release(parts->no);
+		}
+		parts = next;
+	}
+
+	// Drop all normal controllers and add a fresh default one.
+	ctrl_stack.nr_controllers = 0;
+	PE_AddController(-1);
+}
+
 void PE_SetPos(int parts_no, int x, int y)
 {
 	parts_set_pos(parts_get(parts_no), (Point){ x, y });
@@ -1570,8 +1728,6 @@ void PE_SetAlpha(int parts_no, int alpha)
 
 void PE_SetPartsDrawFilter(int parts_no, int draw_filter)
 {
-	if (draw_filter && draw_filter != 1)
-		UNIMPLEMENTED("(%d, %d)", parts_no, draw_filter);
 	parts_get(parts_no)->draw_filter = draw_filter;
 }
 
@@ -1805,10 +1961,72 @@ int PE_GetInputState(int parts_no)
 	return parts_get(parts_no)->state + 1;
 }
 
+void PE_SetComponentType(int parts_no, int type, int state)
+{
+	if (!parts_state_valid(--state))
+		return;
+	struct parts *parts = parts_get(parts_no);
+	enum parts_type pt = PARTS_UNINITIALIZED;
+	switch (type) {
+	case 8:  pt = PARTS_LAYOUT_BOX; break;
+	case 11: pt = PARTS_CG; break;
+	case 12: pt = PARTS_ANIMATION; break;
+	case 13: pt = PARTS_TEXT; break;
+	case 14: pt = PARTS_HGAUGE; break;
+	case 15: pt = PARTS_VGAUGE; break;
+	case 16: pt = PARTS_NUMERAL; break;
+	case 17: pt = PARTS_RECT_DETECTION; break;
+	case 18: pt = PARTS_CONSTRUCTION_PROCESS; break;
+	case 20: pt = PARTS_FLAT; break;
+	case 21: pt = PARTS_3DLAYER; break;
+	case 22: pt = PARTS_MOVIE; break;
+	default:
+		VM_ERROR("unknown component type %d", type);
+	}
+	if (parts->states[state].type != pt)
+		parts_state_reset(&parts->states[state], pt);
+}
+
+int PE_GetComponentType(int parts_no, int state)
+{
+	if (!parts_state_valid(--state))
+		return -1;
+	struct parts *parts = parts_try_get(parts_no);
+	if (!parts)
+		return -1;
+
+	switch (parts->states[state].type) {
+	case PARTS_LAYOUT_BOX: return 8;
+	case PARTS_UNINITIALIZED:  // defaluts to CG
+	case PARTS_CG:
+		return 11;
+	case PARTS_ANIMATION: return 12;
+	case PARTS_TEXT: return 13;
+	case PARTS_HGAUGE: return 14;
+	case PARTS_VGAUGE: return 15;
+	case PARTS_NUMERAL: return 16;
+	case PARTS_RECT_DETECTION: return 17;
+	case PARTS_CONSTRUCTION_PROCESS: return 18;
+	case PARTS_FLAT: return 20;
+	case PARTS_3DLAYER: return 21;
+	case PARTS_MOVIE: return 22;
+	case PARTS_FLASH:
+		break;
+	}
+	VM_ERROR("unsupported component type %d", parts->states[state].type);
+}
+
 bool PE_SetPartsRectangleDetectionSize(int parts_no, int w, int h, int state)
 {
-	UNIMPLEMENTED("(%d, %d, %d, %d)", parts_no, w, h, state);
-	return false;
+	if (!parts_state_valid(--state))
+		return false;
+	struct parts *parts = parts_try_get(parts_no);
+	if (!parts)
+		return false;
+	if (parts->states[state].type != PARTS_RECT_DETECTION)
+		parts_state_reset(&parts->states[state], PARTS_RECT_DETECTION);
+	parts_set_dims(parts, &parts->states[state].common, w, h);
+	return true;
 }
 
 bool PE_SetPartsCGDetectionSize(int parts_no, struct string *cg_name, int state)
@@ -1837,4 +2055,214 @@ void PE_SetSpeedupRateByMessageSkip(int parts_no, int rate)
 {
 	if (rate != 1)
 		UNIMPLEMENTED("(%d, %d)");
+}
+
+static void ctrl_stack_init(void)
+{
+	memset(&ctrl_stack, 0, sizeof(ctrl_stack));
+	// Add initial default controller
+	PE_AddController(-1);
+}
+
+static void ctrl_stack_fini(void)
+{
+	memset(&ctrl_stack, 0, sizeof(ctrl_stack));
+}
+
+// Adds a new controller to the stack and makes it active. The `index`
+// parameter specifies the position in the stack at which to insert the new
+// controller; -1 means "insert directly after the currently active
+// controller". In practice the game only ever passes -1, and the active
+// controller is always the top of the stack at that point, so this
+// degenerates to a simple push.
+int PE_AddController(int index)
+{
+	if (index != -1)
+		VM_ERROR("index != -1 not supported (got %d)", index);
+	if (ctrl_stack.nr_controllers > 0 &&
+			ctrl_stack.active != ctrl_stack.nr_controllers - 1)
+		VM_ERROR("active controller is not at the top of the stack");
+	if (ctrl_stack.nr_controllers >= PARTS_CONTROLLER_STACK_MAX)
+		VM_ERROR("controller stack overflow");
+
+	int no = ctrl_stack.nr_controllers++;
+	ctrl_stack.active = no;
+	return no;
+}
+
+// Removes the controller at position `index` from the stack, releases all
+// parts belonging to it, and returns their parts numbers in
+// `erase_number_list`. `index == -1` means "remove the currently active
+// controller". In practice the game only ever passes -1, and the active
+// controller is always the top of the stack at that point, so this
+// degenerates to a simple pop.
+void PE_RemoveController(struct page **erase_number_list, int index)
+{
+	if (index != -1)
+		VM_ERROR("index != -1 not supported (got %d)", index);
+	if (ctrl_stack.nr_controllers == 0 ||
+			ctrl_stack.active != ctrl_stack.nr_controllers - 1)
+		VM_ERROR("active controller is not at the top of the stack");
+
+	int ctrl_no = ctrl_stack.active;
+
+	// Collect and release parts belonging to this controller
+	struct parts *p = TAILQ_FIRST(&parts_list);
+	while (p) {
+		struct parts *next = TAILQ_NEXT(p, parts_list_entry);
+		if (p->controller_no == ctrl_no) {
+			*erase_number_list = array_pushback(*erase_number_list,
+					(union vm_value){.i = p->no}, AIN_ARRAY_INT, -1);
+			parts_release(p->no);
+		}
+		p = next;
+	}
+
+	ctrl_stack.nr_controllers--;
+	if (ctrl_stack.nr_controllers == 0) {
+		PE_AddController(-1);
+	} else {
+		ctrl_stack.active = ctrl_stack.nr_controllers - 1;
+	}
+}
+
+void PE_set_active_controller(int controller_no)
+{
+	if (controller_no == PARTS_CONTROLLER_SYSTEM_OVERLAY ||
+			(controller_no >= 0 && controller_no < ctrl_stack.nr_controllers))
+		ctrl_stack.active = controller_no;
+	else
+		VM_ERROR("Invalid controller number: %d", controller_no);
+}
+
+int PE_get_active_controller(void)
+{
+	return ctrl_stack.active;
+}
+
+int PE_get_system_controller(void)
+{
+	return PARTS_CONTROLLER_SYSTEM_OVERLAY;
+}
+
+void PE_parts_set_want_save(int parts_no, bool want_save)
+{
+	parts_get(parts_no)->want_save = want_save;
+}
+
+float PE_parts_get_absolute_x(int parts_no)
+{
+	struct parts *parts = parts_try_get(parts_no);
+	return parts ? (float)parts->global.pos.x : 0.0f;
+}
+
+float PE_parts_get_absolute_y(int parts_no)
+{
+	struct parts *parts = parts_try_get(parts_no);
+	return parts ? (float)parts->global.pos.y : 0.0f;
+}
+
+int PE_parts_get_absolute_z(int parts_no)
+{
+	struct parts *parts = parts_try_get(parts_no);
+	return parts ? parts->global.z : 0;
+}
+
+void PE_parts_set_lock_input_state(int parts_no, bool lock)
+{
+	parts_get(parts_no)->lock_input_state = lock;
+}
+
+bool PE_init_parts_movie(int parts_no, int width, int height, int bg_r, int bg_g, int bg_b, int state)
+{
+	if (!parts_state_valid(--state))
+		return false;
+
+	struct parts *parts = parts_get(parts_no);
+	struct parts_movie *movie = parts_get_movie(parts, state);
+
+	int sp_no = sact_SP_GetUnuseNum(0);
+	struct sact_sprite *sp = sact_create_sprite(sp_no, width, height, bg_r, bg_g, bg_b, 255);
+	if (!sp)
+		return false;
+
+	struct texture *tex = sprite_get_texture(sp);
+	movie->sprite_no = sp_no;
+	movie->common.texture = *tex; // XXX: textures normally shouldn't be copied like this...
+	parts_set_dims(parts, &movie->common, width, height);
+	parts_dirty(parts);
+	return true;
+}
+
+int PE_get_movie_sprite(int parts_no, int state)
+{
+	if (!parts_state_valid(--state))
+		return -1;
+
+	struct parts *parts = parts_try_get(parts_no);
+	if (!parts || parts->states[state].type != PARTS_MOVIE)
+		return -1;
+
+	return parts->states[state].movie.sprite_no;
+}
+
+bool PE_CreateParts3DLayerPluginID(int parts_no, int state)
+{
+	if (!parts_state_valid(--state))
+		return false;
+	struct parts *parts = parts_get(parts_no);
+	struct parts_3dlayer *l = parts_get_3dlayer(parts, state);
+
+	if (l->plugin >= 0)
+		return false;
+
+	int handle = ReignEngine_create_plugin(RE_SEAL_PLUGIN);
+	if (handle < 0)
+		return false;
+
+	int sp_no = sact_SP_GetUnuseNum(0);
+	struct sact_sprite *sp = sact_create_sprite(sp_no, 1, 1, 0, 0, 0, 255);
+	if (!sp) {
+		ReignEngine_ReleasePlugin(handle);
+		return false;
+	}
+
+	if (!ReignEngine_BindPlugin(handle, sp_no)) {
+		sact_SP_Delete(sp_no);
+		ReignEngine_ReleasePlugin(handle);
+		return false;
+	}
+
+	l->plugin = handle;
+	l->sprite_no = sp_no;
+	return true;
+}
+
+int PE_GetParts3DLayerPluginID(int parts_no, int state)
+{
+	if (!parts_state_valid(--state))
+		return -1;
+	struct parts *parts = parts_try_get(parts_no);
+	if (!parts || parts->states[state].type != PARTS_3DLAYER)
+		return -1;
+	return parts->states[state].layer3d.plugin;
+}
+
+bool PE_ReleaseParts3DLayerPluginID(int parts_no, int state)
+{
+	if (!parts_state_valid(--state))
+		return false;
+	struct parts *parts = parts_try_get(parts_no);
+	if (!parts || parts->states[state].type != PARTS_3DLAYER)
+		return false;
+	struct parts_3dlayer *l = &parts->states[state].layer3d;
+	if (l->plugin < 0)
+		return false;
+	ReignEngine_ReleasePlugin(l->plugin);
+	l->plugin = -1;
+	if (l->sprite_no >= 0) {
+		sact_SP_Delete(l->sprite_no);
+		l->sprite_no = -1;
+	}
+	return true;
 }

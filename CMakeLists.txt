@@ -104,7 +104,10 @@ target_sources(xsystem4 PRIVATE
   src/parts/construction.c
   src/parts/debug.c
   src/parts/flash.c
+  src/parts/flat.c
   src/parts/input.c
+  src/parts/layoutbox.c
+  src/parts/message.c
   src/parts/motion.c
   src/parts/parts.c
   src/parts/render.c
@@ -138,6 +141,7 @@ target_sources(xsystem4 PRIVATE
   src/hll/DALKEDemo.c
   src/hll/Data.c
   src/hll/DataFile.c
+  src/hll/Discord.c
   src/hll/DrawDungeon.c
   src/hll/DrawEffect.c
   src/hll/DrawGraph.c

@@ -15,11 +15,14 @@
  */
 
 #include <limits.h>
+#include <math.h>
 #include <assert.h>
 #include <cglm/cglm.h>
 
 #include "system4.h"
 #include "system4/hashtable.h"
+#include "system4/string.h"
+#include "system4/flat.h"
 
 #include "gfx/gfx.h"
 #include "scene.h"
@@ -43,12 +46,30 @@ static struct {
 	GLint top_right;
 	GLint add_color;
 	GLint multiply_color;
+	GLint draw_filter;
 	GLint use_clipper;
 	GLint clipper_tex;
 	GLint inv_clipper_transform;
 } parts_shader;
 
-static void parts_render_texture(struct texture *texture, mat4 mw_transform, Rectangle *rect, float blend_rate, vec3 add_color, vec3 multiply_color, int alpha_clipper)
+static void set_draw_filter_blend_func(int draw_filter)
+{
+	switch (draw_filter) {
+	case PARTS_DRAW_FILTER_ADDITIVE:
+		glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE, GL_ZERO, GL_ONE);
+		break;
+	case PARTS_DRAW_FILTER_MULTIPLY:
+		glBlendFuncSeparate(GL_DST_COLOR, GL_ZERO, GL_ZERO, GL_ONE);
+		break;
+	case PARTS_DRAW_FILTER_SCREEN:
+		glBlendFuncSeparate(GL_ONE, GL_ONE_MINUS_SRC_COLOR, GL_ZERO, GL_ONE);
+		break;
+	default:
+		break;
+	}
+}
+
+static void parts_render_texture(struct texture *texture, mat4 mw_transform, Rectangle *rect, float blend_rate, vec3 add_color, vec3 multiply_color, int draw_filter, int alpha_clipper)
 {
 	mat4 wv_transform = WV_TRANSFORM(config.view_width, config.view_height);
 
@@ -67,6 +88,7 @@ static void parts_render_texture(struct texture *texture, mat4 mw_transform, Rec
 	glUniform2f(parts_shader.top_right, rect->x + rect->w, rect->y + rect->h);
 	glUniform3fv(parts_shader.add_color, 1, add_color);
 	glUniform3fv(parts_shader.multiply_color, 1, multiply_color);
+	glUniform1i(parts_shader.draw_filter, draw_filter);
 
 	struct parts *clipper = alpha_clipper ? parts_try_get(alpha_clipper) : NULL;
 	if (clipper) {
@@ -118,23 +140,17 @@ static void parts_render_text(struct parts *parts, struct parts_text *t)
 			struct parts_text_char *ch = &line->chars[j];
 			mat4 mw_transform = WORLD_TRANSFORM(ch->t.w, ch->t.h, x, y);
 			Rectangle r = { 0, 0, ch->t.w, ch->t.h };
-			parts_render_texture(&ch->t, mw_transform, &r, blend_rate, add_color, multiply_color, parts->alpha_clipper_parts_no);
+			parts_render_texture(&ch->t, mw_transform, &r, blend_rate, add_color, multiply_color, 0, parts->alpha_clipper_parts_no);
 			x += ch->advance;
 		}
 		x = parts->global.pos.x + t->common.origin_offset.x;
-		y += line->height;
+		y += line->height + t->line_space;
 	}
 }
 
 static void parts_render_cg(struct parts *parts, struct parts_common *common)
 {
-	switch (parts->draw_filter) {
-	case 1:
-		glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE, GL_ZERO, GL_ONE);
-		break;
-	default:
-		break;
-	}
+	set_draw_filter_blend_func(parts->draw_filter);
 
 	mat4 mw_transform = GLM_MAT4_IDENTITY_INIT;
 	glm_translate(mw_transform, (vec3) { parts->global.pos.x, parts->global.pos.y, 0 });
@@ -161,9 +177,121 @@ static void parts_render_cg(struct parts *parts, struct parts_common *common)
 		parts->global.multiply_color.g / 255.0f,
 		parts->global.multiply_color.b / 255.0f,
 	};
-	parts_render_texture(&common->texture, mw_transform, &r, parts->global.alpha / 255.0, add_color, multiply_color, parts->alpha_clipper_parts_no);
+	parts_render_texture(&common->texture, mw_transform, &r, parts->global.alpha / 255.0, add_color, multiply_color, parts->draw_filter, parts->alpha_clipper_parts_no);
 
 	glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ZERO);
+}
+
+static void render_flat_layer(struct parts *parts, struct parts_flat *f,
+		struct flat_layer_state *state,
+		struct flat_timeline *timelines, size_t nr_timelines,
+		mat4 parent, float parent_alpha);
+
+static void render_flat_item(struct parts *parts, struct parts_flat *f,
+		struct flat_layer_state *state, size_t tl_idx,
+		struct flat_timeline *tl,
+		struct flat_key_data_graphic *key,
+		mat4 parent, float parent_alpha)
+{
+	int lib_idx = parts_flat_find_library(f->flat, tl->library_name->text);
+	if (lib_idx < 0 || (size_t)lib_idx >= f->flat->nr_libraries)
+		return;
+
+	struct flat_library *lib = &f->flat->libraries[lib_idx];
+
+	float pos_x = (f->flat->hdr.version > 4) ? key->pos_x.f : (float)key->pos_x.i;
+	float pos_y = (f->flat->hdr.version > 4) ? key->pos_y.f : (float)key->pos_y.i;
+
+	mat4 layer_m = GLM_MAT4_IDENTITY_INIT;
+	glm_translate(layer_m, (vec3){ pos_x, pos_y, 0 });
+	glm_rotate_z(layer_m, deg2rad(key->angle_z), layer_m);
+	glm_scale(layer_m, (vec3){ key->scale_x, key->scale_y, 1.0f });
+	glm_translate(layer_m, (vec3){ -(float)key->origin_x, -(float)key->origin_y, 0 });
+
+	mat4 combined;
+	glm_mat4_mul(parent, layer_m, combined);
+
+	float alpha = parent_alpha * key->alpha / 255.0f;
+
+	switch (lib->type) {
+	case FLAT_LIB_CG: {
+		if ((size_t)lib_idx >= f->nr_textures || !f->textures[lib_idx].handle)
+			return;
+		Texture *tex = &f->textures[lib_idx];
+
+		set_draw_filter_blend_func(key->draw_filter);
+
+		mat4 render_m;
+		glm_mat4_copy(combined, render_m);
+		glm_scale(render_m, (vec3){ tex->w, tex->h, 1.0f });
+
+		Rectangle rect;
+		if (key->area_width && key->area_height) {
+			rect = (Rectangle){ key->area_x, key->area_y, key->area_width, key->area_height };
+		} else {
+			rect = (Rectangle){ 0, 0, tex->w, tex->h };
+		}
+
+		vec3 add_color = { key->add_r / 255.0f, key->add_g / 255.0f, key->add_b / 255.0f };
+		vec3 mul_color = { key->mul_r / 255.0f, key->mul_g / 255.0f, key->mul_b / 255.0f };
+		parts_render_texture(tex, render_m, &rect, alpha, add_color, mul_color,
+				key->draw_filter, parts->alpha_clipper_parts_no);
+
+		if (key->draw_filter != PARTS_DRAW_FILTER_NORMAL)
+			glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ZERO);
+		break;
+	}
+	case FLAT_LIB_TIMELINE: {
+		struct flat_layer_state *child = state->children[tl_idx];
+		if (child) {
+			render_flat_layer(parts, f, child,
+					lib->timeline.timelines,
+					lib->timeline.nr_timelines,
+					combined, alpha);
+		}
+		break;
+	}
+	// TODO: support FLAT_LIB_STOP_MOTION and FLAT_LIB_EMITTER
+	default:
+		break;
+	}
+}
+
+static void render_flat_layer(struct parts *parts, struct parts_flat *f,
+		struct flat_layer_state *state,
+		struct flat_timeline *timelines, size_t nr_timelines,
+		mat4 parent, float parent_alpha)
+{
+	// reverse order for correct z-ordering
+	for (size_t i = nr_timelines; i-- > 0;) {
+		struct flat_timeline *tl = &timelines[i];
+		if (tl->type != FLAT_TIMELINE_GRAPHIC)
+			continue;
+		int local = state->current_frame - tl->begin_frame;
+		if (local < 0 || local >= tl->frame_count)
+			continue;
+
+		if (local >= (int)tl->graphic.count)
+			continue;
+		struct flat_key_data_graphic *key = &tl->graphic.keys[local];
+
+		render_flat_item(parts, f, state, i, tl, key, parent, parent_alpha);
+	}
+}
+
+static void parts_render_flat(struct parts *parts, struct parts_flat *f)
+{
+	if (!f->flat || !f->root_state)
+		return;
+
+	mat4 base = GLM_MAT4_IDENTITY_INIT;
+	glm_translate(base, (vec3){ parts->global.pos.x, parts->global.pos.y, 0 });
+	glm_rotate_z(base, deg2rad(parts->local.rotation.z), base);
+	glm_scale(base, (vec3){ parts->global.scale.x, parts->global.scale.y, 1.0f });
+
+	render_flat_layer(parts, f, f->root_state,
+			f->flat->timelines, f->flat->nr_timelines,
+			base, parts->global.alpha / 255.0f);
 }
 
 static void parts_render_flash_shape(struct parts *parts, struct parts_flash *f, struct parts_flash_object *obj, struct swf_tag_define_shape *tag)
@@ -202,7 +330,7 @@ static void parts_render_flash_shape(struct parts *parts, struct parts_flash *f,
 		(parts->global.multiply_color.g / 255.0f) * fixed16_to_float(obj->color_transform.mult_terms[1]),
 		(parts->global.multiply_color.b / 255.0f) * fixed16_to_float(obj->color_transform.mult_terms[2])
 	};
-	parts_render_texture(src, mw_transform, &r, blend_rate, add_color, multiply_color, parts->alpha_clipper_parts_no);
+	parts_render_texture(src, mw_transform, &r, blend_rate, add_color, multiply_color, 0, parts->alpha_clipper_parts_no);
 }
 
 static void parts_render_flash_sprite(struct parts *parts, struct parts_flash *f, struct parts_flash_object *obj, struct swf_tag_define_sprite *tag)
@@ -276,8 +404,7 @@ void parts_render(struct parts *parts)
 		return;
 	if (parts->linked_to >= 0) {
 		struct parts *link_parts = parts_get(parts->linked_to);
-		struct parts_state *link_state = &link_parts->states[link_parts->state];
-		if (!SDL_PointInRect(&parts_prev_pos, &link_state->common.hitbox))
+		if (!link_parts->is_hovered)
 			return;
 	}
 
@@ -285,6 +412,9 @@ void parts_render(struct parts *parts)
 	struct parts_state *state = &parts->states[parts->state];
 	switch (state->type) {
 	case PARTS_UNINITIALIZED:
+	case PARTS_RECT_DETECTION:
+	case PARTS_LAYOUT_BOX:
+	case PARTS_3DLAYER:
 		break;
 	case PARTS_CG:
 	case PARTS_ANIMATION:
@@ -292,6 +422,7 @@ void parts_render(struct parts *parts)
 	case PARTS_HGAUGE:
 	case PARTS_VGAUGE:
 	case PARTS_CONSTRUCTION_PROCESS:
+	case PARTS_MOVIE:
 		if (state->common.texture.handle)
 			parts_render_cg(parts, &state->common);
 		break;
@@ -300,6 +431,9 @@ void parts_render(struct parts *parts)
 		break;
 	case PARTS_FLASH:
 		parts_render_flash(parts, &state->flash);
+		break;
+	case PARTS_FLAT:
+		parts_render_flat(parts, &state->flat);
 		break;
 	}
 }
@@ -369,6 +503,7 @@ void parts_render_init(void)
 	parts_shader.top_right = glGetUniformLocation(parts_shader.shader.program, "top_right");
 	parts_shader.add_color = glGetUniformLocation(parts_shader.shader.program, "add_color");
 	parts_shader.multiply_color = glGetUniformLocation(parts_shader.shader.program, "multiply_color");
+	parts_shader.draw_filter = glGetUniformLocation(parts_shader.shader.program, "draw_filter");
 	parts_shader.use_clipper = glGetUniformLocation(parts_shader.shader.program, "use_clipper");
 	parts_shader.clipper_tex = glGetUniformLocation(parts_shader.shader.program, "clipper_tex");
 	parts_shader.inv_clipper_transform = glGetUniformLocation(parts_shader.shader.program, "inv_clipper_transform");

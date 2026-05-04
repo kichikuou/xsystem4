@@ -23,6 +23,7 @@ struct page;
 struct string;
 
 // parts.c
+void PE_enable_multi_controller(void);
 bool PE_Init(void);
 void PE_Reset(void);
 void PE_Update(int passed_time, bool message_window_show);
@@ -36,6 +37,7 @@ bool PE_SetPartsCG_by_string_index(int parts_no, struct string *cg_no,
 		int sprite_deform, int state);
 void PE_GetPartsCGName(int parts_no, struct string **cg_name, int state);
 bool PE_SetPartsCGSurfaceArea(int parts_no, int x, int y, int w, int h, int state);
+void PE_GetPartsCGSurfaceArea(int parts_no, int *x, int *y, int *w, int *h, int state);
 int PE_GetPartsCGNumber(int parts_no, int state);
 bool PE_SetLoopCG_by_index(int parts_no, int cg_no, int nr_frames, int frame_time, int state);
 bool PE_SetLoopCG(int parts_no, struct string *cg_name, int start_no, int nr_frames,
@@ -67,6 +69,7 @@ bool PE_SetNumeralSurfaceArea(int parts_no, int x, int y, int w, int h, int stat
 void PE_ReleaseParts(int parts_no);
 void PE_ReleaseAllParts(void);
 void PE_ReleaseAllPartsWithoutSystem(void);
+void PE_ReleaseAllWithoutSystem(struct page **erase_number_list);
 void PE_SetPos(int parts_no, int x, int y);
 int PE_GetPartsX(int parts_no);
 int PE_GetPartsY(int parts_no);
@@ -106,6 +109,8 @@ void PE_SetPartsAlphaClipperPartsNumber(int parts_no, int alpha_clipper_parts_no
 void PE_SetPartsPixelDecide(int PartsNumber, bool pixel_decide);
 bool PE_SetThumbnailReductionSize(int reduction_size);
 bool PE_SetThumbnailMode(bool Mode);
+void PE_SetComponentType(int parts_no, int type, int state);
+int PE_GetComponentType(int parts_no, int state);
 void PE_SetInputState(int parts_no, int state);
 int PE_GetInputState(int parts_no);
 bool PE_SetPartsRectangleDetectionSize(int parts_no, int w, int h, int state);
@@ -113,9 +118,25 @@ bool PE_SetPartsCGDetectionSize(int parts_no, struct string *cg_name, int state)
 bool PE_Save(struct page **buffer);
 bool PE_SaveWithoutHideParts(struct page **buffer);
 bool PE_Load(struct page **buffer);
+int PE_AddController(int index);
+void PE_RemoveController(struct page **erase_number_list, int index);
+bool PE_CreateParts3DLayerPluginID(int parts_no, int state);
+int PE_GetParts3DLayerPluginID(int parts_no, int state);
+bool PE_ReleaseParts3DLayerPluginID(int parts_no, int state);
 // GUIEngine
 int PE_GetFreeNumber(void);
 bool PE_IsExist(int parts_no);
+// PartsFunc interface
+void PE_set_active_controller(int controller_no);
+int PE_get_active_controller(void);
+int PE_get_system_controller(void);
+void PE_parts_set_want_save(int parts_no, bool want_save);
+bool PE_init_parts_movie(int parts_no, int width, int height, int bg_r, int bg_g, int bg_b, int state);
+int PE_get_movie_sprite(int parts_no, int state);
+float PE_parts_get_absolute_x(int parts_no);
+float PE_parts_get_absolute_y(int parts_no);
+int PE_parts_get_absolute_z(int parts_no);
+void PE_parts_set_lock_input_state(int parts_no, bool lock);
 
 // construction.c
 bool PE_AddCreateToPartsConstructionProcess(int parts_no, int w, int h, int state);
@@ -126,6 +147,8 @@ bool PE_AddFillToPartsConstructionProcess(int parts_no, int x, int y, int w, int
 bool PE_AddFillAlphaColorToPartsConstructionProcess(int parts_no, int x, int y, int w, int h,
 		int r, int g, int b, int a, int state);
 bool PE_AddFillAMapToPartsConstructionProcess(int parts_no, int x, int y, int w, int h, int a, int state);
+bool PE_AddFillWithAlphaToPartsConstructionProcess(int parts_no, int x, int y, int w, int h,
+		int r, int g, int b, int a, int state);
 bool PE_AddDrawRectToPartsConstructionProcess(int parts_no, int x, int y, int w, int h,
 		int r, int g, int b, int state);
 bool PE_AddDrawCutCGToPartsConstructionProcess(int parts_no, struct string *cg_name,
@@ -148,8 +171,11 @@ bool PE_SetPartsConstructionSurfaceArea(int parts_no, int x, int y, int w, int h
 
 // input.c
 void PE_UpdateInputState(int passed_time);
+void PE_SetPassCursor(int parts_no, bool pass);
+bool PE_GetPartsPassCursor(int parts_no);
 void PE_SetClickable(int parts_no, bool clickable);
 bool PE_GetPartsClickable(int parts_no);
+void PE_SetDrag(int parts_no, bool enable);
 void PE_SetPartsGroupDecideOnCursor(int group_no, bool decide_on_cursor);
 void PE_SetPartsGroupDecideClick(int group_no, bool decide_click);
 void PE_SetOnCursorShowLinkPartsNumber(int parts_no, int link_parts_no);
@@ -161,6 +187,19 @@ void PE_BeginInput(void);
 void PE_EndInput(void);
 int PE_GetClickPartsNumber(void);
 bool PE_IsCursorIn(int parts_no, int mouse_x, int mouse_y, int state);
+
+// message.c
+void PE_ReleaseMessage(void);
+void PE_PopMessage(void);
+int PE_GetMessageType(void);
+int PE_GetMessagePartsNumber(void);
+int PE_GetMessageDelegateIndex(void);
+int PE_GetMessageVariableCount(void);
+int PE_GetMessageVariableType(int index);
+int PE_GetMessageVariableInt(int index);
+float PE_GetMessageVariableFloat(int index);
+bool PE_GetMessageVariableBool(int index);
+void PE_GetMessageVariableString(int index, struct string **out);
 
 // motion.c
 void PE_AddMotionPos(int parts_no, int begin_x, int begin_y, int end_x, int end_y, int begin_t, int end_t);
@@ -235,5 +274,38 @@ bool PE_StopPartsFlash(int parts_no, int state);
 bool PE_StartPartsFlash(int parts_no, int state);
 bool PE_GoFramePartsFlash(int parts_no, int frame_no, int state);
 int PE_GetPartsFlashEndFrame(int parts_no, int state);
+
+// flat.c
+bool PE_ExistsFlatFile(struct string *filename);
+bool PE_SetPartsFlat(int parts_no, struct string *filename, int state);
+bool PE_IsPartsFlatEnd(int parts_no, int state);
+int PE_GetPartsFlatCurrentFrameNumber(int parts_no, int state);
+bool PE_BackPartsFlatBeginFrame(int parts_no, int state);
+bool PE_StepPartsFlatFinalFrame(int parts_no, int state);
+bool PE_SetPartsFlatSurfaceArea(int parts_no, int x, int y, int w, int h, int state);
+bool PE_SetPartsFlatAndStop(int parts_no, struct string *filename, int state);
+bool PE_StopPartsFlat(int parts_no, int state);
+bool PE_StartPartsFlat(int parts_no, int state);
+bool PE_GoFramePartsFlat(int parts_no, int frame_no, int state);
+int PE_GetPartsFlatEndFrame(int parts_no, int state);
+
+// layoutbox.c
+void PE_SetLayoutBoxLayoutType(int parts_no, int type);
+int PE_GetLayoutBoxLayoutType(int parts_no);
+void PE_SetLayoutBoxReturn(int parts_no, bool return_flag, int return_size);
+bool PE_IsLayoutBoxReturn(int parts_no);
+int PE_GetLayoutBoxReturnSize(int parts_no);
+void PE_SetLayoutBoxAlign(int parts_no, int align);
+int PE_GetLayoutBoxAlign(int parts_no);
+void PE_SetComponentMargin(int parts_no, int top, int bottom, int left, int right);
+int PE_GetComponentMarginTop(int parts_no);
+int PE_GetComponentMarginBottom(int parts_no);
+int PE_GetComponentMarginLeft(int parts_no);
+int PE_GetComponentMarginRight(int parts_no);
+void PE_set_layoutbox_padding(int parts_no, int top, int bottom, int left, int right);
+int PE_get_layoutbox_padding_top(int parts_no);
+int PE_get_layoutbox_padding_bottom(int parts_no);
+int PE_get_layoutbox_padding_left(int parts_no);
+int PE_get_layoutbox_padding_right(int parts_no);
 
 #endif /* SYSTEM4_PARTS_H */
