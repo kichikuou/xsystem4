@@ -40,7 +40,6 @@ struct parts_controller_stack ctrl_stack;
 bool parts_multi_controller;
 
 static void ctrl_stack_init(void);
-static void ctrl_stack_fini(void);
 
 #define PARTS_PARAMS_INITIALIZER (struct parts_params) { \
 	.z = 1, \
@@ -1062,7 +1061,7 @@ void PE_Reset(void)
 {
 	PE_ReleaseAllParts();
 	PE_ReleaseMessage();
-	ctrl_stack_fini();
+	ctrl_stack_init();
 	sact_ModuleFini();
 }
 
@@ -1120,6 +1119,11 @@ static void parts_update_component(struct parts *parts)
 
 void PE_UpdateComponent(possibly_unused int passed_time)
 {
+	// After loading a save, the game script may compute a negative time delta
+	// because it stores an absolute system.GetTime() value in the save data,
+	// which is meaningless across process restarts.
+	if (passed_time < 0)
+		passed_time = 0;
 	while (!TAILQ_EMPTY(&dirty_list)) {
 		// pop parts object from dirty list
 		struct parts *parts = TAILQ_FIRST(&dirty_list);
@@ -1161,7 +1165,7 @@ void PE_Update(int passed_time, bool message_window_show)
 	audio_update();
 	parts_update_animation(passed_time);
 	PE_UpdateInputState(passed_time);
-	parts_render_update(passed_time);
+	parts_render_update();
 }
 
 void PE_UpdateParts(int passed_time, possibly_unused bool is_skip, bool message_window_show)
@@ -1169,7 +1173,7 @@ void PE_UpdateParts(int passed_time, possibly_unused bool is_skip, bool message_
 	parts_message_window_show = message_window_show;
 	audio_update();
 	parts_update_animation(passed_time);
-	parts_render_update(passed_time);
+	parts_render_update();
 }
 
 void PE_SetDelegateIndex(int parts_no, int delegate_index)
@@ -1183,12 +1187,13 @@ int PE_GetDelegateIndex(int parts_no)
 	return parts ? parts->delegate_index : -1;
 }
 
-bool PE_SetPartsCG(int parts_no, struct string *cg_name, possibly_unused int sprite_deform, int state)
+bool PE_SetPartsCG(int parts_no, struct string *cg_name, int sprite_deform, int state)
 {
 	if (!parts_state_valid(--state))
 		return false;
 
 	struct parts *parts = parts_get(parts_no);
+	parts->sprite_deform = sprite_deform;
 	if (!cg_name || *(cg_name->text) == '\0') {
 		parts_state_reset(&parts->states[state], PARTS_CG);
 		parts_dirty(parts);
@@ -1199,12 +1204,13 @@ bool PE_SetPartsCG(int parts_no, struct string *cg_name, possibly_unused int spr
 	return parts_cg_set(parts, cg, cg_name);
 }
 
-bool PE_SetPartsCG_by_index(int parts_no, int cg_no, possibly_unused int sprite_deform, int state)
+bool PE_SetPartsCG_by_index(int parts_no, int cg_no, int sprite_deform, int state)
 {
 	if (!parts_state_valid(--state))
 		return false;
 
 	struct parts *parts = parts_get(parts_no);
+	parts->sprite_deform = sprite_deform;
 	if (!cg_no) {
 		parts_state_reset(&parts->states[state], PARTS_CG);
 		parts_dirty(parts);
@@ -1217,12 +1223,13 @@ bool PE_SetPartsCG_by_index(int parts_no, int cg_no, possibly_unused int sprite_
 
 // XXX: Rance Quest
 bool PE_SetPartsCG_by_string_index(int parts_no, struct string *cg_name,
-		possibly_unused int sprite_deform, int state)
+		int sprite_deform, int state)
 {
 	if (!parts_state_valid(--state))
 		return false;
 
 	struct parts *parts = parts_get(parts_no);
+	parts->sprite_deform = sprite_deform;
 	if (!cg_name) {
 		parts_state_reset(&parts->states[state], PARTS_CG);
 		parts_dirty(parts);
@@ -1947,6 +1954,44 @@ bool PE_SetThumbnailMode(bool mode)
 	return true;
 }
 
+bool PE_save_thumbnail(struct string *filename, int reduction_factor)
+{
+	if (reduction_factor < 1)
+		reduction_factor = 1;
+
+	Texture *src = gfx_main_surface();
+	int w = src->w / reduction_factor;
+	int h = src->h / reduction_factor;
+
+	// Downscale by repeatedly halving until we are within a factor of two of
+	// the target size, then do the final stretch. This avoids the aliasing
+	// that a single bilinear minification would otherwise produce.
+	Texture tmp, *cur = src;
+	bool have_tmp = false;
+	while (cur->w / 2 > w && cur->h / 2 > h) {
+		Texture next;
+		gfx_init_texture_blank(&next, cur->w / 2, cur->h / 2);
+		gfx_copy_stretch_with_alpha_map(&next, 0, 0, next.w, next.h, cur, 0, 0, cur->w, cur->h);
+		if (have_tmp)
+			gfx_delete_texture(&tmp);
+		tmp = next;
+		cur = &tmp;
+		have_tmp = true;
+	}
+
+	Texture dst;
+	gfx_init_texture_blank(&dst, w, h);
+	gfx_copy_stretch_with_alpha_map(&dst, 0, 0, w, h, cur, 0, 0, cur->w, cur->h);
+	if (have_tmp)
+		gfx_delete_texture(&tmp);
+
+	char *path = savedir_path(filename->text);
+	int r = gfx_save_texture(&dst, path, ALCG_QNT);
+	free(path);
+	gfx_delete_texture(&dst);
+	return !!r;
+}
+
 void PE_SetInputState(int parts_no, int state)
 {
 	if (!parts_state_valid(--state)) {
@@ -2062,11 +2107,6 @@ static void ctrl_stack_init(void)
 	memset(&ctrl_stack, 0, sizeof(ctrl_stack));
 	// Add initial default controller
 	PE_AddController(-1);
-}
-
-static void ctrl_stack_fini(void)
-{
-	memset(&ctrl_stack, 0, sizeof(ctrl_stack));
 }
 
 // Adds a new controller to the stack and makes it active. The `index`
@@ -2185,6 +2225,9 @@ bool PE_init_parts_movie(int parts_no, int width, int height, int bg_r, int bg_g
 	struct sact_sprite *sp = sact_create_sprite(sp_no, width, height, bg_r, bg_g, bg_b, 255);
 	if (!sp)
 		return false;
+	// The movie frames are composited by the parts engine via parts_render(),
+	// so hide the bound sprite from the scene to avoid double-drawing.
+	sprite_set_show(sp, false);
 
 	struct texture *tex = sprite_get_texture(sp);
 	movie->sprite_no = sp_no;
@@ -2232,6 +2275,9 @@ bool PE_CreateParts3DLayerPluginID(int parts_no, int state)
 		ReignEngine_ReleasePlugin(handle);
 		return false;
 	}
+	// The 3D content is composited by the parts engine via parts_render(), so
+	// hide the bound sprite from the scene to avoid double-drawing.
+	sprite_set_show(sp, false);
 
 	l->plugin = handle;
 	l->sprite_no = sp_no;

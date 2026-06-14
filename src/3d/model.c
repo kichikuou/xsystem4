@@ -485,14 +485,6 @@ static struct bone *add_bone(struct model *model, struct pol *pol, struct pol_bo
 	glm_quat_mat4(pol_bone->rotq, bone->inverse_bind_matrix);
 	glm_translate(bone->inverse_bind_matrix, pol_bone->pos);
 
-	// Update bone_name_map. If the bone name is not unique in the POL, set the
-	// map value to NULL so that ID matching will be used.
-	struct ht_slot *slot = ht_put(model->bone_name_map, pol_bone->name, bone);
-	if (slot->value != bone) {
-		NOTICE("%s: non-unique bone %s", model->path, pol_bone->name);
-		slot->value = NULL;
-	}
-
 	model->nr_bones++;
 	return bone;
 }
@@ -546,11 +538,11 @@ struct model *model_load(struct archive *aar, const char *path)
 		if (pol->nr_bones > MAX_BONES)
 			ERROR("%s: Too many bones (%u)", model->path, pol->nr_bones);
 		model->bone_map = ht_create(pol->nr_bones * 3 / 2);
-		model->bone_name_map = ht_create(pol->nr_bones * 3 / 2);
 		model->mot_cache = ht_create(16);
 		model->bones = xcalloc_aligned(pol->nr_bones, struct bone);
+		model->bones_by_pol_index = xcalloc(pol->nr_bones, sizeof(struct bone *));
 		for (uint32_t i = 0; i < pol->nr_bones; i++) {
-			add_bone(model, pol, &pol->bones[i]);
+			model->bones_by_pol_index[i] = add_bone(model, pol, &pol->bones[i]);
 		}
 		if (model->nr_bones != (int)pol->nr_bones)
 			ERROR("%s: Broken bone data", model->path);
@@ -590,6 +582,8 @@ struct model *model_load(struct archive *aar, const char *path)
 	}
 
 	// Meshes
+	struct pol_mesh **hd_meshes = xmalloc(pol->nr_meshes * sizeof(*hd_meshes));
+	int nr_hd_meshes = 0;
 	for (uint32_t i = 0; i < pol->nr_meshes; i++) {
 		if (!pol->meshes[i])
 			continue;
@@ -600,6 +594,8 @@ struct model *model_load(struct archive *aar, const char *path)
 				model->collider = collider_create(pol->meshes[i]);
 			continue;
 		}
+		if (pol->meshes[i]->flags & MESH_HEIGHT_DETECTION)
+			hd_meshes[nr_hd_meshes++] = pol->meshes[i];
 		struct pol_material_group *mg = &pol->materials[pol->meshes[i]->material];
 		int m_off = material_offsets[pol->meshes[i]->material];
 		if (mg->nr_children == 0) {
@@ -610,6 +606,10 @@ struct model *model_load(struct archive *aar, const char *path)
 			add_mesh(model, pol->meshes[i], j, m_off + j);
 		}
 	}
+
+	if (!model->collider && nr_hd_meshes > 0)
+		model->collider = collider_create_raycast(hd_meshes, nr_hd_meshes);
+	free(hd_meshes);
 
 	pol_compute_aabb(pol, model->aabb);
 
@@ -636,10 +636,9 @@ void model_free(struct model *model)
 	for (int i = 0; i < model->nr_bones; i++)
 		destroy_bone(&model->bones[i]);
 	xfree_aligned(model->bones);
+	free(model->bones_by_pol_index);
 	if (model->bone_map)
 		ht_free_int(model->bone_map);
-	if (model->bone_name_map)
-		ht_free(model->bone_name_map);
 	if (model->mot_cache) {
 		ht_foreach_value(model->mot_cache, (void(*)(void*))mot_free);
 		ht_free(model->mot_cache);
@@ -746,11 +745,6 @@ struct model *model_create_sphere(int r, int g, int b, int a)
 	return model;
 }
 
-static int cmp_motions_by_bone_id(const void *lhs, const void *rhs)
-{
-	return (*(struct mot_bone **)lhs)->id - (*(struct mot_bone **)rhs)->id;
-}
-
 static struct mot *mot_load(const char *name, struct model *model, struct archive *aar)
 {
 	struct archive_data *mot_file = RE_get_aar_entry(aar, model->path, name, ".MOT");
@@ -770,24 +764,28 @@ static struct mot *mot_load(const char *name, struct model *model, struct archiv
 		ERROR("%s: wrong number of bones. Expected %d but got %d", name, model->nr_bones, mot->nr_bones);
 
 	// Reorder mot->motions so that motion for model->bones[i] can be
-	// accessed by mot->motions[i].
+	// accessed by mot->motions[i]. MOT bones are applied to POL bones purely
+	// by array index; bone name and bone id are never used for matching.
+	struct mot_bone **reordered = xmalloc(mot->nr_bones * sizeof(struct mot_bone *));
 	for (uint32_t i = 0; i < mot->nr_bones; i++) {
-		// Match by name first, since some MOT have wrong bone IDs (e.g. maidsan_ahoge_*).
-		struct bone *bone = ht_get(model->bone_name_map, mot->motions[i]->name, NULL);
-		// If it is not found or is NULL (non-unique bone name), match by bone ID.
-		if (!bone)
-			bone = ht_get_int(model->bone_map, mot->motions[i]->id, NULL);
-		if (!bone)
-			ERROR("%s: invalid bone \"%s\" (%d)", name, mot->motions[i]->name, mot->motions[i]->id);
-		mot->motions[i]->id = bone->index;
+		reordered[model->bones_by_pol_index[i]->index] = mot->motions[i];
 	}
-	qsort(mot->motions, mot->nr_bones, sizeof(struct mot_bone *), cmp_motions_by_bone_id);
+	memcpy(mot->motions, reordered, mot->nr_bones * sizeof(struct mot_bone *));
+	free(reordered);
 
-	// Load optional .txa file.
-	struct archive_data *txa_file = RE_get_aar_entry(aar, model->path, name, ".txa");
-	if (txa_file) {
-		txa_load(txa_file->data, txa_file->size, mot);
-		archive_free_data(txa_file);
+	// Load optional sidecar file.
+	if (re_plugin_version <= RE_TAPIR_PLUGIN) {
+		struct archive_data *txa_file = RE_get_aar_entry(aar, model->path, name, ".txa");
+		if (txa_file) {
+			txa_load(txa_file->data, txa_file->size, mot);
+			archive_free_data(txa_file);
+		}
+	} else {
+		struct archive_data *mpr_file = RE_get_aar_entry(aar, model->path, name, ".mpr");
+		if (mpr_file) {
+			mot->mpr = mpr_load(mpr_file->data, mpr_file->size, model);
+			archive_free_data(mpr_file);
+		}
 	}
 
 	return mot;

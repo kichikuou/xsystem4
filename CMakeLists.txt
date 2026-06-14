@@ -85,10 +85,12 @@ target_sources(xsystem4 PRIVATE
   src/3d/collision.c
   src/3d/debug.c
   src/3d/model.c
+  src/3d/mpr.c
   src/3d/parser.c
   src/3d/particle.c
   src/3d/reign.c
   src/3d/renderer.c
+  src/3d/s3de.c
 
   src/dungeon/dgn.c
   src/dungeon/dtx.c

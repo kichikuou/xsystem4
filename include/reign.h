@@ -84,6 +84,12 @@ struct RE_camera {
 	vec3 pos;
 	float pitch, roll, yaw;  // in degrees
 	float quake_pitch, quake_yaw;
+	// Per-frame full override from an 3de "camera" object. Cleared at the
+	// start of every RE_build_model tick and re-asserted by s3de_effect_update
+	// if any active camera object selects this frame.
+	bool override_active;
+	vec3 override_pos;
+	float override_pitch, override_yaw, override_roll;
 };
 
 struct RE_back_cg {
@@ -104,7 +110,7 @@ struct RE_plugin {
 	struct RE_instance **instances;
 	struct archive *aar;
 	struct hash_table *model_cache;
-	struct hash_table *pae_cache;
+	struct hash_table *effect_cache;
 	struct RE_renderer *renderer;
 	struct RE_camera camera;
 	mat4 proj_transform;
@@ -158,6 +164,7 @@ struct RE_instance {
 	struct RE_plugin *plugin;
 	struct model *model;
 	struct particle_effect *effect;
+	struct s3de_effect *s3de_effect;
 	struct motion *motion;
 	struct motion *next_motion;
 	struct height_detector *height_detector;
@@ -177,6 +184,7 @@ struct RE_instance {
 	bool use_mag_speed;
 	bool motion_blend;
 	float motion_blend_rate;
+	vec3 diffuse;  // color multiplier for meshes, light color for lights
 	vec3 ambient;
 	vec3 column_pos;
 	float column_height;
@@ -188,7 +196,6 @@ struct RE_instance {
 
 	// Lights
 	vec3 vec;
-	vec3 diffuse;
 	vec3 globe_diffuse;
 
 	// Private
@@ -210,6 +217,7 @@ bool RE_plugin_unbind(struct RE_plugin *plugin);
 bool RE_plugin_suspend(struct RE_plugin *plugin);
 bool RE_plugin_resume(struct RE_plugin *plugin);
 bool RE_build_model(struct RE_plugin *plugin, int elapsed_ms);
+void RE_update_model(struct RE_plugin *plugin);
 bool RE_set_viewport(struct RE_plugin *plugin, int x, int y, int width, int height);
 bool RE_set_projection(struct RE_plugin *plugin, float width, float height, float near, float far, float deg);
 int RE_create_instance(struct RE_plugin *plugin);
@@ -319,5 +327,8 @@ cJSON *RE_to_json(struct sact_sprite *sp, bool verbose);
 int ReignEngine_create_plugin(enum RE_plugin_version version);
 bool ReignEngine_ReleasePlugin(int handle);
 bool ReignEngine_BindPlugin(int handle, int sprite);
+
+// Exposed for MarmotModelEngine
+void ReignEngine_update_models(void);
 
 #endif /* SYSTEM4_REIGN_H */

@@ -225,6 +225,7 @@ struct RE_renderer *RE_renderer_new(void)
 	glUniformBlockBinding(r->program, bone_transforms, BONE_TRANSFORMS_BINDING);
 	r->global_ambient = glGetUniformLocation(r->program, "global_ambient");
 	r->instance_ambient = glGetUniformLocation(r->program, "instance_ambient");
+	r->diffuse_mod = glGetUniformLocation(r->program, "diffuse_mod");
 	for (int i = 0; i < NR_DIR_LIGHTS; i++) {
 		char buf[64];
 		sprintf(buf, "dir_lights[%d].dir", i);
@@ -331,15 +332,30 @@ void RE_renderer_free(struct RE_renderer *r)
 void RE_calc_view_matrix(struct RE_camera *camera, vec3 up, mat4 out)
 {
 	vec3 front = { 0.0, 0.0, -1.0 };
-	vec3 euler = {
-		glm_rad(camera->pitch + camera->quake_pitch),
-		glm_rad(camera->yaw + camera->quake_yaw),
-		glm_rad(camera->roll)
-	};
+	vec3 euler;
+	float *pos;
+	if (camera->override_active) {
+		euler[0] = glm_rad(camera->override_pitch);
+		euler[1] = glm_rad(camera->override_yaw);
+		euler[2] = glm_rad(camera->override_roll);
+		pos = camera->override_pos;
+	} else {
+		euler[0] = glm_rad(camera->pitch + camera->quake_pitch);
+		euler[1] = glm_rad(camera->yaw + camera->quake_yaw);
+		euler[2] = glm_rad(camera->roll);
+		pos = camera->pos;
+	}
 	mat4 rot;
-	glm_euler(euler, rot);
+	glm_euler_yxz(euler, rot);
 	glm_mat4_mulv3(rot, front, 0.0, front);
-	glm_look(camera->pos, front, up, out);
+	vec3 up_v;
+	if (up) {
+		glm_vec3_copy(up, up_v);  // Use the provided up vector.
+	} else {
+		// Derive the camera's up by rotating world-Y with the same orientation.
+		glm_mat4_mulv3(rot, GLM_YUP, 0.0, up_v);
+	}
+	glm_look(pos, front, up_v, out);
 }
 
 static bool should_draw_shadow(struct mesh *mesh, struct material *material)
@@ -353,18 +369,27 @@ static void render_model(struct RE_instance *inst, struct RE_renderer *r, enum d
 	struct model *model = inst->model;
 	if (!inst->model)
 		return;
-	bool all_transparent = inst->alpha < 1.0f;
-	bool all_opaque = !model->has_transparent_mesh && inst->alpha >= 1.0f;
+
+	// NOTE: next_motion's .mpr is not sampled.
+	const struct mpr *mpr = (inst->motion && inst->motion->mot) ? inst->motion->mot->mpr : NULL;
+	float frame = inst->motion ? inst->motion->current_frame : 0.f;
+	struct mpr_modulation obj_mod;
+	mpr_evaluate_object(mpr, frame, inst, &obj_mod);
+
+	bool all_transparent = obj_mod.alpha < 1.0f;
+	bool all_opaque = !model->has_transparent_mesh && obj_mod.alpha >= 1.0f
+		&& !(mpr && mpr->has_mesh_alpha);
 	if ((phase == DRAW_OPAQUE && all_transparent) || (phase == DRAW_TRANSPARENT && all_opaque))
 		return;
+
+	int mat_tex_index[model->nr_materials];
+	mpr_build_mat_tex_index(model, inst, mpr, frame, mat_tex_index);
 
 	if (inst->local_transform_needs_update)
 		RE_instance_update_local_transform(inst);
 
 	glUniformMatrix4fv(r->local_transform, 1, GL_FALSE, inst->local_transform[0]);
 	glUniformMatrix3fv(r->normal_transform, 1, GL_FALSE, inst->normal_transform[0]);
-	glUniform1f(r->alpha_mod, inst->alpha);
-	glUniform3fv(r->instance_ambient, 1, inst->ambient);
 
 	bool draw_shadow = inst->draw_shadow && inst->plugin->shadow_mode;
 	if (draw_shadow) {
@@ -378,9 +403,20 @@ static void render_model(struct RE_instance *inst, struct RE_renderer *r, enum d
 		if (mesh->hidden)
 			continue;
 		struct material *material = &model->materials[mesh->material];
-		bool is_transparent = mesh->is_transparent || inst->alpha < 1.0f;
+
+		const struct mpr_track_set *mt = mpr ? mpr->mesh_tracks[i] : NULL;
+		struct mpr_modulation mesh_mod;
+		mpr_evaluate_mesh(mt, frame, &obj_mod, &mesh_mod);
+		if (mesh_mod.alpha <= 0.0f)
+			continue;
+
+		bool is_transparent = mesh->is_transparent || mesh_mod.alpha < 1.0f;
 		if (phase != (is_transparent ? DRAW_TRANSPARENT : DRAW_OPAQUE))
 			continue;
+
+		glUniform1f(r->alpha_mod, mesh_mod.alpha);
+		glUniform3fv(r->instance_ambient, 1, mesh_mod.ambient);
+		glUniform3fv(r->diffuse_mod, 1, mesh_mod.diffuse);
 
 		if (mesh->flags & MESH_BLEND_ADDITIVE) {
 			glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE, GL_ZERO, GL_ONE);
@@ -411,8 +447,8 @@ static void render_model(struct RE_instance *inst, struct RE_renderer *r, enum d
 		glUniform3fv(r->rim_color, 1, material->rim_color);
 
 		glActiveTexture(GL_TEXTURE0 + COLOR_TEXTURE_UNIT);
-		int animation_index = inst->texture_animation_index < material->nr_color_maps
-			? inst->texture_animation_index : 0;
+		int tex_index = mat_tex_index[mesh->material];
+		int animation_index = tex_index < material->nr_color_maps ? tex_index : 0;
 		glBindTexture(GL_TEXTURE_2D, material->color_maps[animation_index]);
 		glUniform1i(r->texture, COLOR_TEXTURE_UNIT);
 
@@ -444,12 +480,12 @@ static void render_model(struct RE_instance *inst, struct RE_renderer *r, enum d
 		}
 
 		if (material->alpha_map) {
-			glUniform1i(r->alpha_mode, mesh->is_transparent ? ALPHA_MAP_BLEND : ALPHA_MAP_TEST);
+			glUniform1i(r->alpha_mode, is_transparent ? ALPHA_MAP_BLEND : ALPHA_MAP_TEST);
 			glActiveTexture(GL_TEXTURE0 + ALPHA_TEXTURE_UNIT);
 			glBindTexture(GL_TEXTURE_2D, material->alpha_map);
 			glUniform1i(r->alpha_texture, ALPHA_TEXTURE_UNIT);
 		} else {
-			glUniform1i(r->alpha_mode, mesh->is_transparent ? ALPHA_BLEND : ALPHA_TEST);
+			glUniform1i(r->alpha_mode, is_transparent ? ALPHA_BLEND : ALPHA_TEST);
 		}
 
 		if (material->blend_texture) {
@@ -469,12 +505,16 @@ static void render_model(struct RE_instance *inst, struct RE_renderer *r, enum d
 
 		if (mesh->flags & MESH_BOTH)
 			glDisable(GL_CULL_FACE);
+		if (mesh->flags & MESH_NO_ZWRITE)
+			glDepthMask(GL_FALSE);
 
 		if (mesh->nr_indices)
 			glDrawElements(GL_TRIANGLES, mesh->nr_indices, GL_UNSIGNED_SHORT, NULL);
 		else
 			glDrawArrays(GL_TRIANGLES, 0, mesh->nr_vertices);
 
+		if (mesh->flags & MESH_NO_ZWRITE)
+			glDepthMask(GL_TRUE);
 		if (mesh->flags & MESH_BOTH)
 			glEnable(GL_CULL_FACE);
 		glBindVertexArray(0);
@@ -510,6 +550,25 @@ static void render_skinned_model(struct RE_instance *inst, struct RE_renderer *r
 		render_static_model(inst->shadow_volume_instance, r, phase);
 }
 
+static void reset_draw_uniforms(struct RE_renderer *r)
+{
+	glUniform1f(r->alpha_mod, 1.0f);
+	glUniform3f(r->diffuse_mod, 1.0f, 1.0f, 1.0f);
+	glUniform2f(r->uv_scroll, 0.0f, 0.0f);
+	glUniform1i(r->has_bones, GL_FALSE);
+	glUniform1f(r->specular_strength, 0.0f);
+	glUniform1f(r->specular_shininess, 0.0f);
+	glUniform1i(r->use_specular_map, GL_FALSE);
+	glUniform1f(r->rim_exponent, 0.0f);
+	glUniform3f(r->rim_color, 0.0f, 0.0f, 0.0f);
+	glUniform1i(r->use_normal_map, GL_FALSE);
+	glUniform1i(r->use_blend_texture, GL_FALSE);
+	glUniform1f(r->shadow_darkness, 0.0f);
+	glUniform1i(r->alpha_mode, ALPHA_BLEND);
+	glUniform1i(r->fog_type, 0);
+	glUniform1i(r->diffuse_type, DIFFUSE_NORMAL);
+}
+
 static void render_billboard(struct RE_instance *inst, struct RE_renderer *r, mat4 view_mat, enum draw_phase phase)
 {
 	if (!inst->draw)
@@ -535,19 +594,11 @@ static void render_billboard(struct RE_instance *inst, struct RE_renderer *r, ma
 	glm_mat4_pick3(local_transform, normal_transform);
 
 	glUniform3fv(r->instance_ambient, 1, inst->ambient);
-
 	glUniformMatrix4fv(r->local_transform, 1, GL_FALSE, local_transform[0]);
 	glUniformMatrix3fv(r->normal_transform, 1, GL_FALSE, normal_transform[0]);
-	glUniform1i(r->has_bones, GL_FALSE);
+
+	reset_draw_uniforms(r);
 	glUniform1f(r->alpha_mod, inst->alpha);
-	glUniform1f(r->specular_strength, 0.0);
-	glUniform1f(r->specular_shininess, 0.0);
-	glUniform1i(r->use_specular_map, GL_FALSE);
-	glUniform1f(r->rim_exponent, 0.0);
-	glUniform1i(r->diffuse_type, DIFFUSE_NORMAL);
-	glUniform1i(r->use_normal_map, GL_FALSE);
-	glUniform1f(r->shadow_darkness, 0.0f);
-	glUniform1i(r->alpha_mode, ALPHA_BLEND);
 	glUniform1i(r->fog_type, inst->plugin->fog_mode ? inst->plugin->fog_type : 0);
 	switch (inst->draw_type) {
 	case RE_DRAW_TYPE_NORMAL:
@@ -652,6 +703,200 @@ static void render_polygon_particles(struct RE_renderer *r, struct RE_instance *
 	}
 }
 
+static void render_s3de_billboard_particles(struct RE_renderer *r, struct RE_instance *inst,
+					    struct s3de_object *obj, struct s3de_object_state *st,
+					    mat3 camera_rot, float frame)
+{
+	if (!obj->texture || obj->particle_count == 0)
+		return;
+
+	struct billboard_texture *bt = ht_get(
+		inst->s3de_effect->s3de->textures, obj->texture, NULL);
+	if (!bt)
+		return;
+
+	glUniform1i(r->diffuse_type, DIFFUSE_EMISSIVE);
+	switch (obj->blend_type) {
+	case S3DE_BLEND_NORMAL:
+		glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ZERO, GL_ONE);
+		break;
+	case S3DE_BLEND_ADDITIVE:
+		glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE, GL_ZERO, GL_ONE);
+		break;
+	}
+	glActiveTexture(GL_TEXTURE0);
+	glUniform1i(r->texture, 0);
+	glBindVertexArray(r->billboard_vao);
+	glDisable(GL_CULL_FACE);
+	glBindTexture(GL_TEXTURE_2D, bt->texture);
+
+	for (int i = 0; i < obj->particle_count; i++) {
+		struct s3de_particle *p = &st->particles[i];
+		float alpha;
+		if (!s3de_particle_alpha(st, p, frame, &alpha))
+			continue;
+
+		mat4 world;
+		if (!s3de_billboard_world_transform(inst, obj, st, p, frame, camera_rot, world))
+			continue;
+
+		glUniform1f(r->alpha_mod, alpha);
+		glUniformMatrix4fv(r->local_transform, 1, GL_FALSE, world[0]);
+		glUniformMatrix3fv(r->normal_transform, 1, GL_FALSE, world[0]);
+
+		glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+	}
+
+	glEnable(GL_CULL_FACE);
+	glBindVertexArray(0);
+	glBindTexture(GL_TEXTURE_2D, 0);
+}
+
+static void render_s3de_polygon_particles(struct RE_renderer *r, struct RE_instance *inst,
+					  struct s3de_object *obj, struct s3de_object_state *st,
+					  mat3 camera_rot, vec3 camera_pos, float frame,
+					  enum draw_phase phase)
+{
+	struct model *model = obj->model;
+	if (!model || obj->particle_count == 0)
+		return;
+
+	if (phase == DRAW_OPAQUE && st->emitter_alpha < 1.0f)
+		return;
+
+	glUniform1i(r->diffuse_type, DIFFUSE_NORMAL);
+	// The .3de blend_type is ignored for polygon objects. Per-mesh additive
+	// blend modes are not yet handled.
+	glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ZERO, GL_ONE);
+
+	for (int i = 0; i < obj->particle_count; i++) {
+		struct s3de_particle *p = &st->particles[i];
+		float alpha;
+		if (!s3de_particle_alpha(st, p, frame, &alpha))
+			continue;
+		if (phase == DRAW_OPAQUE && alpha < 1.0f)
+			continue;
+
+		mat4 world;
+		if (!s3de_mesh_world_transform(inst, obj, st, p, frame, camera_rot, camera_pos, world))
+			continue;
+
+		glUniform1f(r->alpha_mod, alpha);
+		glUniformMatrix4fv(r->local_transform, 1, GL_FALSE, world[0]);
+		glUniformMatrix3fv(r->normal_transform, 1, GL_FALSE, world[0]);
+
+		for (int j = 0; j < model->nr_meshes; j++) {
+			struct mesh *mesh = &model->meshes[j];
+			bool is_transparent = mesh->is_transparent || alpha < 1.0f;
+			if (phase != (is_transparent ? DRAW_TRANSPARENT : DRAW_OPAQUE))
+				continue;
+			struct material *material = &model->materials[mesh->material];
+
+			glActiveTexture(GL_TEXTURE0);
+			glBindTexture(GL_TEXTURE_2D, material->color_maps[0]);
+			glUniform1i(r->texture, 0);
+			glBindVertexArray(mesh->vao);
+
+			if (mesh->flags & MESH_BOTH)
+				glDisable(GL_CULL_FACE);
+			glDrawArrays(GL_TRIANGLES, 0, mesh->nr_vertices);
+			if (mesh->flags & MESH_BOTH)
+				glEnable(GL_CULL_FACE);
+
+			glBindVertexArray(0);
+			glBindTexture(GL_TEXTURE_2D, 0);
+		}
+	}
+}
+
+// Sort entry for per-object ordering.
+struct s3de_obj_sort_key {
+	float key;
+	int idx;
+};
+
+static int cmp_s3de_obj(const void *lhs, const void *rhs)
+{
+	const struct s3de_obj_sort_key *l = lhs;
+	const struct s3de_obj_sort_key *r = rhs;
+	if (l->key != r->key)
+		return (l->key > r->key) - (l->key < r->key);
+	// Fall back to declaration order to keep the sort stable.
+	return (l->idx > r->idx) - (l->idx < r->idx);
+}
+
+static void render_s3de_effect(struct RE_instance *inst, struct RE_renderer *r, enum draw_phase phase)
+{
+	if (!inst->s3de_effect || !inst->draw)
+		return;
+
+	if (inst->local_transform_needs_update)
+		RE_instance_update_local_transform(inst);
+
+	glUniform3fv(r->instance_ambient, 1, inst->ambient);
+	reset_draw_uniforms(r);
+
+	if (phase == DRAW_TRANSPARENT)
+		glDepthMask(GL_FALSE);
+
+	mat4 view_mat;
+	RE_calc_view_matrix(&inst->plugin->camera, NULL, view_mat);
+	mat3 camera_rot;
+	glm_mat4_pick3t(view_mat, camera_rot);
+
+	struct s3de *s = inst->s3de_effect->s3de;
+
+	// Sort objects by their emitter's world-space distance to the camera.
+	// The transparent phase draws back-to-front, the opaque phase draws
+	// front-to-back. Particles inside one object are not sorted; they stay
+	// in spawn order.
+	float *camera_pos = inst->plugin->camera.override_active
+		? inst->plugin->camera.override_pos : inst->plugin->camera.pos;
+	float key_sign = phase == DRAW_OPAQUE ? 1.0f : -1.0f;
+	struct s3de_obj_sort_key *keys = xmalloc(s->nr_objects * sizeof(*keys));
+	for (int i = 0; i < s->nr_objects; i++) {
+		keys[i].idx = i;
+		vec3 emitter_world;
+		glm_mat4_mulv3(inst->local_transform,
+			inst->s3de_effect->objects[i].emitter_pos, 1.0f,
+			emitter_world);
+		vec3 d;
+		glm_vec3_sub(emitter_world, camera_pos, d);
+		keys[i].key = key_sign * glm_vec3_norm2(d);
+	}
+	qsort(keys, s->nr_objects, sizeof(*keys), cmp_s3de_obj);
+
+	float frame = inst->motion->current_frame;
+
+	for (int k = 0; k < s->nr_objects; k++) {
+		int i = keys[k].idx;
+		struct s3de_object *obj = &s->objects[i];
+		struct s3de_object_state *st = &inst->s3de_effect->objects[i];
+
+		vec3 ambient;
+		glm_vec3_add(inst->ambient, st->additive_color, ambient);
+		glUniform3fv(r->instance_ambient, 1, ambient);
+		glUniform3fv(r->diffuse_mod, 1, st->multiply_color);
+
+		switch (obj->type) {
+		case S3DE_OBJ_BILLBOARD:
+			// Billboards are transparent-phase only.
+			if (phase == DRAW_TRANSPARENT)
+				render_s3de_billboard_particles(r, inst, obj, st, camera_rot, frame);
+			break;
+		case S3DE_OBJ_POLYGON:
+			render_s3de_polygon_particles(r, inst, obj, st, camera_rot, camera_pos, frame, phase);
+			break;
+		case S3DE_OBJ_CAMERA:
+			break;
+		}
+	}
+	free(keys);
+
+	if (phase == DRAW_TRANSPARENT)
+		glDepthMask(GL_TRUE);
+}
+
 static void render_particle_effect(struct RE_instance *inst, struct RE_renderer *r, enum draw_phase phase)
 {
 	// NOTE: inst->draw flag has no effect for particle effects.
@@ -659,15 +904,7 @@ static void render_particle_effect(struct RE_instance *inst, struct RE_renderer 
 		return;
 
 	glUniform3fv(r->instance_ambient, 1, inst->ambient);
-
-	glUniform1i(r->has_bones, GL_FALSE);
-	glUniform1f(r->specular_strength, 0.0);
-	glUniform1f(r->specular_shininess, 0.0);
-	glUniform1i(r->use_specular_map, GL_FALSE);
-	glUniform1f(r->rim_exponent, 0.0);
-	glUniform1i(r->use_normal_map, GL_FALSE);
-	glUniform1f(r->shadow_darkness, 0.0f);
-	glUniform1i(r->alpha_mode, ALPHA_BLEND);
+	reset_draw_uniforms(r);
 
 	glDepthMask(GL_FALSE);
 
@@ -711,7 +948,10 @@ static void render_instance(struct RE_instance *inst, struct RE_renderer *r, mat
 		render_billboard(inst, r, view_mat, phase);
 		break;
 	case RE_ITYPE_PARTICLE_EFFECT:
-		render_particle_effect(inst, r, phase);
+		if (inst->s3de_effect)
+			render_s3de_effect(inst, r, phase);
+		else
+			render_particle_effect(inst, r, phase);
 		break;
 	default:
 		break;
@@ -869,7 +1109,8 @@ static void render_back_cg(struct texture *dst, struct RE_back_cg *bcg, struct R
 static void setup_lights(struct RE_plugin *plugin)
 {
 	struct RE_renderer *r = plugin->renderer;
-	glUniform3fv(r->camera_pos, 1, plugin->camera.pos);
+	glUniform3fv(r->camera_pos, 1, plugin->camera.override_active
+			? plugin->camera.override_pos : plugin->camera.pos);
 	glUniform3fv(r->global_ambient, 1, plugin->global_ambient);
 	int light_index = 0;
 	for (int i = 0; i < plugin->nr_instances; i++) {
@@ -937,18 +1178,22 @@ static struct RE_instance **sort_instances(struct RE_plugin *plugin, mat4 view_t
 	return instances;
 }
 
+void RE_update_model(struct RE_plugin *plugin)
+{
+	struct RE_renderer *r = plugin->renderer;
+	if (!r || plugin->suspended)
+		return;
+	uint32_t timestamp = SDL_GetTicks();
+	RE_build_model(plugin, timestamp - r->last_frame_timestamp);
+	r->last_frame_timestamp = timestamp;
+}
+
 void RE_render(struct sact_sprite *sp)
 {
 	struct RE_plugin *plugin = (struct RE_plugin *)sp->plugin;
 	struct RE_renderer *r = plugin->renderer;
 	if (!r || plugin->suspended)
 		return;
-
-	if (re_plugin_version >= RE_TAPIR_PLUGIN) {
-		uint32_t timestamp = SDL_GetTicks();
-		RE_build_model(plugin, timestamp - r->last_frame_timestamp);
-		r->last_frame_timestamp = timestamp;
-	}
 
 	sprite_dirty(sp);
 	struct texture *texture = sprite_get_texture(sp);
@@ -977,7 +1222,7 @@ void RE_render(struct sact_sprite *sp)
 	glEnable(GL_CULL_FACE);
 
 	mat4 view_transform;
-	RE_calc_view_matrix(&plugin->camera, GLM_YUP, view_transform);
+	RE_calc_view_matrix(&plugin->camera, NULL, view_transform);
 
 	// Tweak the projection transform so that the rendering result is vertically
 	// flipped. If we render the scene normally, the resulting image will be

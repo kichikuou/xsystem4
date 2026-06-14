@@ -40,9 +40,9 @@ struct model {
 	int nr_materials;
 	struct material *materials;
 	int nr_bones;
-	struct bone *bones;
-	struct hash_table *bone_map;  // bone id in POL/MOT -> struct bone *
-	struct hash_table *bone_name_map;  // bone name -> (struct bone * | NULL)
+	struct bone *bones;  // ordered so that parents precede their children
+	struct bone **bones_by_pol_index;  // POL bone array index -> struct bone *
+	struct hash_table *bone_map;  // bone id in POL -> struct bone *
 	struct hash_table *mot_cache;  // name -> struct mot *
 	struct collider *collider;
 	vec3 aabb[2];  // axis-aligned bounding box
@@ -155,6 +155,7 @@ struct RE_renderer {
 	GLint has_bones;
 	GLint global_ambient;
 	GLint instance_ambient;
+	GLint diffuse_mod;
 	struct {
 		GLint dir;
 		GLint diffuse;
@@ -401,6 +402,218 @@ void particle_effect_free(struct particle_effect *effect);
 void particle_effect_update(struct RE_instance *inst);
 void particle_object_calc_local_transform(struct RE_instance *inst, struct particle_object *po, struct particle_instance *pi, float frame, mat4 dest);
 
+// s3de.c
+
+// .3de effect system. The 's' prefix is just to avoid an identifier starting
+// with a digit; it stands for SealEngine.
+
+enum s3de_object_type {
+	S3DE_OBJ_BILLBOARD,
+	S3DE_OBJ_POLYGON,
+	S3DE_OBJ_CAMERA,
+};
+
+enum s3de_move_type {
+	S3DE_MOVE_LINEAR,
+	S3DE_MOVE_BEZIER,
+};
+
+enum s3de_spawn_position_type {
+	S3DE_SPAWN_NORMAL,
+	S3DE_SPAWN_SPHERE,
+	S3DE_SPAWN_HORIZONTAL,
+};
+
+enum s3de_blend_type {
+	S3DE_BLEND_NORMAL,
+	S3DE_BLEND_ADDITIVE,
+};
+
+enum s3de_emitter_link_type {
+	S3DE_LINK_NONE              = 0,  // frozen at spawn-time world pos
+	S3DE_LINK_FOLLOW            = 1,  // particle follows current emitter pos
+	S3DE_LINK_ROTATE_AT_SPAWN   = 2,  // emitter rotation around spawn pos
+	S3DE_LINK_ROTATE_AT_CURRENT = 3,  // emitter rotation around current pos
+	S3DE_LINK_MAX = S3DE_LINK_ROTATE_AT_CURRENT
+};
+
+enum s3de_direction_type {
+	S3DE_DIR_RANDOM,
+	S3DE_DIR_SPECIFIED,
+	S3DE_DIR_EMITTER,
+	S3DE_DIR_EMITTER_REVERSE,
+	S3DE_DIR_EMITTER_COORD,
+	S3DE_DIR_ARBITRARY_PLANE,
+	S3DE_DIR_SPAWN,
+};
+
+enum s3de_posture_type {
+	S3DE_POSE_NONE,
+	S3DE_POSE_CAMERA,
+	S3DE_POSE_MOVE_DIR,
+	S3DE_POSE_MOVE_AND_FLY,
+	S3DE_POSE_FLY_AND_EMITTER_MOVE,
+};
+
+enum s3de_interp_type {
+	S3DE_INTERP_NONE,
+	S3DE_INTERP_LINEAR,
+	S3DE_INTERP_SLERP,
+};
+
+struct s3de_range {
+	float base;
+	float random;
+};
+
+struct s3de_scalar_entry {
+	int frame;
+	float value;
+	enum s3de_interp_type interp;
+};
+
+struct s3de_vec3_entry {
+	int frame;
+	vec3 v;
+	enum s3de_interp_type interp;
+};
+
+struct s3de_position_entry {
+	int frame;
+	vec3 pos;
+	enum s3de_interp_type interp;
+	float spawn_radius;
+	float spawn_angle_deg;
+};
+
+struct s3de_object {
+	char *name;
+	enum s3de_object_type type;
+	enum s3de_move_type movement_type;
+	enum s3de_spawn_position_type spawn_position_type;
+	float spawn_distance;
+	int particle_count;
+
+	char *texture;
+
+	enum s3de_blend_type blend_type;
+	char *polygon_name;
+	enum s3de_emitter_link_type emitter_link_type;
+	bool soft_fog_edge;
+
+	enum s3de_posture_type posture_type;
+	enum s3de_direction_type direction_type;
+	vec3 direction;
+	float direction_angle;
+
+	struct s3de_range start_size, end_size;
+	struct s3de_range start_x_size, end_x_size;
+	struct s3de_range start_y_size, end_y_size;
+	struct s3de_range offset_x, offset_y, offset_z;
+	struct s3de_range speed, acceleration;
+	struct s3de_range movement_distance, movement_curve;
+
+	bool free_fall;
+	float mass, air_resistance;
+
+	struct s3de_range start_x_rotation, end_x_rotation;
+	struct s3de_range start_y_rotation, end_y_rotation;
+	struct s3de_range start_z_rotation, end_z_rotation;
+
+	float x_revolution_angle[2], y_revolution_angle[2], z_revolution_angle[2];
+	float x_revolution_distance[2], y_revolution_distance[2], z_revolution_distance[2];
+
+	int child_frame;
+	float texture_anime_frame;
+
+	struct s3de_range alpha_fade_in_frame, alpha_fade_out_frame;
+
+	int *damages;
+	int nr_damages;
+
+	struct s3de_position_entry *position_list;
+	int nr_position_entries;
+	struct s3de_scalar_entry *size_list;
+	int nr_size_entries;
+	struct s3de_scalar_entry *x_size_list;
+	int nr_x_size_entries;
+	struct s3de_scalar_entry *y_size_list;
+	int nr_y_size_entries;
+	struct s3de_scalar_entry *alpha_list;
+	int nr_alpha_entries;
+	struct s3de_vec3_entry *rotation_list;
+	int nr_rotation_entries;
+	struct s3de_vec3_entry *multiply_color_list;
+	int nr_multiply_color_entries;
+	struct s3de_vec3_entry *additive_color_list;
+	int nr_additive_color_entries;
+
+	struct model *model;
+};
+
+struct s3de {
+	char *path;
+	int loop_start_frame;
+	int loop_end_frame;
+	struct s3de_object *objects;
+	int nr_objects;
+	struct hash_table *textures; // name -> struct billboard_texture*
+};
+
+struct s3de *s3de_load(struct archive *aar, const char *path);
+void s3de_free(struct s3de *s);
+
+struct s3de_particle {
+	float begin_frame, end_frame;
+	vec3 world_pos;       // spawn-time world position
+	vec3 spawn_offset;    // offset from emitter pos
+	vec3 direction;
+	vec3 spawn_dir;       // emitter motion direction at spawn frame
+	float speed, accel;
+	float movement_distance, movement_curve;
+	float start_size_scale, end_size_scale;
+	float start_x_scale, end_x_scale;
+	float start_y_scale, end_y_scale;
+	float offset_x, offset_y;  // per-particle 2D quad pivot shift
+	vec3 start_rotation_deg, end_rotation_deg;
+	float fade_in_frames, fade_out_frames;
+};
+
+// Emitter-level values interpolated once per frame by s3de_effect_update,
+// then read (and combined with per-particle values) during rendering.
+struct s3de_object_state {
+	vec3 emitter_pos;
+	float emitter_size, emitter_x_size, emitter_y_size;
+	float emitter_alpha;
+	vec3 emitter_rotation_deg;
+	vec3 multiply_color;
+	vec3 additive_color;
+	struct s3de_particle *particles;  // length = obj->particle_count
+};
+
+struct s3de_effect {
+	struct s3de *s3de;
+	struct s3de_object_state *objects;  // length = s3de->nr_objects
+	int wav_channel;       // -1 if no sound
+	bool sound_started;
+	float last_frame;
+};
+
+struct s3de_effect *s3de_effect_create(struct s3de *s, struct archive *aar);
+void s3de_effect_free(struct s3de_effect *eff);
+void s3de_effect_update(struct RE_instance *inst);
+void s3de_calc_frame_range(struct s3de *s, struct motion *motion);
+bool s3de_particle_alpha(struct s3de_object_state *st, struct s3de_particle *p,
+	float frame, float *alpha_out);
+bool s3de_billboard_world_transform(struct RE_instance *inst,
+	struct s3de_object *obj, struct s3de_object_state *st,
+	struct s3de_particle *p, float frame, mat3 camera_rot,
+	mat4 out);
+bool s3de_mesh_world_transform(struct RE_instance *inst,
+	struct s3de_object *obj, struct s3de_object_state *st,
+	struct s3de_particle *p, float frame, mat3 camera_rot, vec3 camera_pos,
+	mat4 out);
+
 // parser.c
 
 struct pol {
@@ -450,6 +663,8 @@ enum mesh_flags {
 	MESH_NO_HEIGHT_DETECTION = 1 << 7,
 	MESH_ALPHA               = 1 << 8,
 	MESH_HAS_LIGHT_UV        = 1 << 9,
+	MESH_NO_ZWRITE           = 1 << 10,
+	MESH_HEIGHT_DETECTION    = 1 << 11,
 };
 
 struct pol_mesh {
@@ -515,6 +730,7 @@ struct mot {
 	uint32_t nr_bones;
 	uint32_t nr_texture_indices;
 	uint32_t *texture_indices;  // texture index for each frame
+	struct mpr *mpr;            // optional
 	struct mot_bone *motions[];
 };
 
@@ -568,6 +784,46 @@ struct amt_material *amt_find_material(struct amt *amt, const char *name);
 void opr_load(uint8_t *data, size_t size, struct pol *pol);
 void txa_load(uint8_t *data, size_t size, struct mot *mot);
 
+// mpr.c
+
+struct mpr_float_key { int frame; float v; };
+struct mpr_vec3_key { int frame; vec3 v; };
+struct mpr_int_key { int frame; int v; };
+
+struct mpr_track_set {
+	int nr_mul_alpha;
+	struct mpr_float_key *mul_alpha;
+	int nr_mul_diffuse;
+	struct mpr_vec3_key *mul_diffuse;
+	int nr_add_ambient;
+	struct mpr_vec3_key *add_ambient;
+	int nr_texture_anime;
+	struct mpr_int_key *texture_anime;  // mesh-scope only
+};
+
+struct mpr {
+	int nr_meshes;                       // == model->nr_meshes
+	struct mpr_track_set **mesh_tracks;  // sparse: indexed by mesh index, NULL if absent
+	struct mpr_track_set object;
+	bool has_mesh_alpha;                 // any mesh_tracks[i]->nr_mul_alpha > 0
+};
+
+// Per-draw material modulation.
+struct mpr_modulation {
+	float alpha;
+	vec3 ambient;
+	vec3 diffuse;
+};
+
+struct mpr *mpr_load(uint8_t *data, size_t size, struct model *model);
+void mpr_free(struct mpr *mpr);
+void mpr_evaluate_object(const struct mpr *mpr, float frame,
+		struct RE_instance *inst, struct mpr_modulation *out);
+void mpr_evaluate_mesh(const struct mpr_track_set *mt, float frame,
+		const struct mpr_modulation *obj, struct mpr_modulation *out);
+void mpr_build_mat_tex_index(const struct model *model, const struct RE_instance *inst,
+		const struct mpr *mpr, float frame, int *mat_tex_index);
+
 // collision.c
 
 struct collider_triangle;
@@ -583,6 +839,7 @@ struct collider {
 };
 
 struct collider *collider_create(struct pol_mesh *mesh);
+struct collider *collider_create_raycast(struct pol_mesh **meshes, int nr_meshes);
 void collider_free(struct collider *collider);
 bool collider_height(struct collider *collider, vec2 xz, float *h_out);
 bool check_collision(struct collider *collider, vec2 p0, vec2 p1, float radius, vec2 out);
