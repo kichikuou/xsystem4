@@ -236,7 +236,7 @@ struct RE_renderer *RE_renderer_new(void)
 		r->dir_lights[i].globe_diffuse = glGetUniformLocation(r->program, buf);
 	}
 	r->specular_light_dir = glGetUniformLocation(r->program, "specular_light_dir");
-	r->specular_strength = glGetUniformLocation(r->program, "specular_strength");
+	r->specular_color = glGetUniformLocation(r->program, "specular_color");
 	r->specular_shininess = glGetUniformLocation(r->program, "specular_shininess");
 	r->use_specular_map = glGetUniformLocation(r->program, "use_specular_map");
 	r->specular_texture = glGetUniformLocation(r->program, "specular_texture");
@@ -259,6 +259,13 @@ struct RE_renderer *RE_renderer_new(void)
 	r->ls_light_dir = glGetUniformLocation(r->program, "ls_light_dir");
 	r->ls_light_color = glGetUniformLocation(r->program, "ls_light_color");
 	r->ls_sun_color = glGetUniformLocation(r->program, "ls_sun_color");
+	r->hemi_light_dir = glGetUniformLocation(r->program, "hemi_light_dir");
+	r->hemi_sky_color = glGetUniformLocation(r->program, "hemi_sky_color");
+	r->hemi_mid_color = glGetUniformLocation(r->program, "hemi_mid_color");
+	r->hemi_ground_color = glGetUniformLocation(r->program, "hemi_ground_color");
+	r->tonemap_param = glGetUniformLocation(r->program, "tonemap_param");
+	r->tonemap_param2 = glGetUniformLocation(r->program, "tonemap_param2");
+	r->nolighting = glGetUniformLocation(r->program, "nolighting");
 	r->alpha_mode = glGetUniformLocation(r->program, "alpha_mode");
 	r->alpha_texture = glGetUniformLocation(r->program, "alpha_texture");
 	r->uv_scroll = glGetUniformLocation(r->program, "uv_scroll");
@@ -424,13 +431,22 @@ static void render_model(struct RE_instance *inst, struct RE_renderer *r, enum d
 			glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ZERO, GL_ONE);
 		}
 
-		glUniform1i(r->fog_type, (inst->plugin->fog_mode && !(mesh->flags & MESH_NOLIGHTING))
-			? inst->plugin->fog_type : 0);
+		int fog_type = inst->plugin->fog_type;
+		if (!inst->plugin->fog_mode || (re_plugin_version == RE_REIGN_PLUGIN && (mesh->flags & MESH_NOLIGHTING))) {
+			fog_type = RE_FOG_NONE;
+		}
+		glUniform1i(r->fog_type, fog_type);
+		glUniform1i(r->nolighting, !!(mesh->flags & MESH_NOLIGHTING));
 
 		GLboolean use_specular_map = GL_FALSE;
 		if (inst->plugin->specular_mode && !(mesh->flags & MESH_NOLIGHTING)) {
-			glUniform1f(r->specular_strength, material->specular_strength);
-			glUniform1f(r->specular_shininess, material->specular_shininess);
+			if (mesh->flags & MESH_HAS_SPECULAR_COLOR) {
+				glUniform3fv(r->specular_color, 1, mesh->specular_color);
+			} else {
+				glUniform3f(r->specular_color, material->specular_strength, material->specular_strength, material->specular_strength);
+			}
+			float shininess = (mesh->flags & MESH_HAS_SPECULAR_POWER) ? mesh->specular_power : material->specular_shininess;
+			glUniform1f(r->specular_shininess, shininess);
 			if (material->specular_map) {
 				glActiveTexture(GL_TEXTURE0 + SPECULAR_TEXTURE_UNIT);
 				glBindTexture(GL_TEXTURE_2D, material->specular_map);
@@ -438,8 +454,8 @@ static void render_model(struct RE_instance *inst, struct RE_renderer *r, enum d
 				use_specular_map = GL_TRUE;
 			}
 		} else {
-			glUniform1f(r->specular_strength, 0.0);
-			glUniform1f(r->specular_shininess, 0.0);
+			glUniform3f(r->specular_color, 0.0f, 0.0f, 0.0f);
+			glUniform1f(r->specular_shininess, 0.0f);
 		}
 		glUniform1i(r->use_specular_map, use_specular_map);
 
@@ -556,7 +572,7 @@ static void reset_draw_uniforms(struct RE_renderer *r)
 	glUniform3f(r->diffuse_mod, 1.0f, 1.0f, 1.0f);
 	glUniform2f(r->uv_scroll, 0.0f, 0.0f);
 	glUniform1i(r->has_bones, GL_FALSE);
-	glUniform1f(r->specular_strength, 0.0f);
+	glUniform3f(r->specular_color, 0.0f, 0.0f, 0.0f);
 	glUniform1f(r->specular_shininess, 0.0f);
 	glUniform1i(r->use_specular_map, GL_FALSE);
 	glUniform1f(r->rim_exponent, 0.0f);
@@ -1056,8 +1072,7 @@ static void render_shadow_map(struct RE_plugin *plugin, mat4 light_space_transfo
 
 static void render_outlines(struct RE_plugin *plugin, mat4 view_transform)
 {
-	enum RE_draw_edge_mode mode = plugin->draw_options[RE_DRAW_OPTION_EDGE];
-	if (mode == RE_DRAW_EDGE_NONE)
+	if (plugin->draw_options[RE_DRAW_OPTION_EDGE] == 0)
 		return;
 	struct outline_renderer *or = &plugin->renderer->outline;
 	if (!or->program)
@@ -1066,12 +1081,20 @@ static void render_outlines(struct RE_plugin *plugin, mat4 view_transform)
 	glUniformMatrix4fv(or->view_transform, 1, GL_FALSE, view_transform[0]);
 	glUniformMatrix4fv(or->proj_transform, 1, GL_FALSE, plugin->proj_transform[0]);
 
+	// SealEngine ignores the per-mesh edge parameters from .opr and uses
+	// a single plugin-wide edge length and color.
+	bool seal_edge = re_plugin_version >= RE_SEAL_PLUGIN;
+	if (seal_edge) {
+		glUniform3fv(or->outline_color, 1, plugin->edge_color);
+		glUniform1f(or->outline_thickness, plugin->edge_length);
+	}
+
 	glCullFace(GL_FRONT);
 	for (int i = 0; i < plugin->nr_instances; i++) {
 		struct RE_instance *inst = plugin->instances[i];
 		if (!inst || !inst->draw)
 			continue;
-		if (mode == RE_DRAW_EDGE_CHARACTERS_ONLY && inst->type != RE_ITYPE_SKINNED)
+		if (!inst->draw_edge)
 			continue;
 		struct model *model = inst->model;
 		if (inst->model && model->nr_bones > 0) {
@@ -1086,8 +1109,10 @@ static void render_outlines(struct RE_plugin *plugin, mat4 view_transform)
 			struct mesh *mesh = &model->meshes[j];
 			if (mesh->flags & MESH_NO_EDGE)
 				continue;
-			glUniform3fv(or->outline_color, 1, mesh->outline_color);
-			glUniform1f(or->outline_thickness, mesh->outline_thickness);
+			if (!seal_edge) {
+				glUniform3fv(or->outline_color, 1, mesh->outline_color);
+				glUniform1f(or->outline_thickness, mesh->outline_thickness);
+			}
 			glBindVertexArray(mesh->vao);
 			glDrawArrays(GL_TRIANGLES, 0, mesh->nr_vertices);
 		}
@@ -1104,6 +1129,53 @@ static void render_back_cg(struct texture *dst, struct RE_back_cg *bcg, struct R
 	int sw = bcg->texture.w;
 	int sh = bcg->texture.h;
 	gfx_copy_stretch_blend_amap_alpha(dst, bcg->x, bcg->y, sw * bcg->mag, sh * bcg->mag, &bcg->texture, 0, 0, sw, sh, bcg->blend_rate * 255);
+}
+
+static void setup_light_scattering(struct RE_plugin *plugin)
+{
+	struct RE_renderer *r = plugin->renderer;
+	if (re_plugin_version >= RE_SEAL_PLUGIN) {
+		const float *lp = plugin->light_params;
+		glUniform4f(r->ls_params, lp[SEAL_LP_LS_BETA_R], lp[SEAL_LP_LS_BETA_M],
+			lp[SEAL_LP_LS_G], lp[SEAL_LP_LS_DISTANCE]);
+		glUniform3f(r->ls_light_dir, lp[SEAL_LP_LS_LIGHT_VEC],
+			lp[SEAL_LP_LS_LIGHT_VEC + 1], -lp[SEAL_LP_LS_LIGHT_VEC + 2]);
+		glUniform3fv(r->ls_light_color, 1, &lp[SEAL_LP_LS_LIGHT_COLOR]);
+		glUniform3fv(r->ls_sun_color, 1, &lp[SEAL_LP_LS_SUN_COLOR]);
+	} else {
+		glUniform4f(r->ls_params, plugin->ls_beta_r, plugin->ls_beta_m, plugin->ls_g, plugin->ls_distance);
+		glUniform3fv(r->ls_light_dir, 1, plugin->ls_light_dir);
+		glUniform3fv(r->ls_light_color, 1, plugin->ls_light_color);
+		glUniform3fv(r->ls_sun_color, 1, plugin->ls_sun_color);
+	}
+}
+
+static void setup_hemisphere_light(struct RE_plugin *plugin)
+{
+	struct RE_renderer *r = plugin->renderer;
+	const float *lp = plugin->light_params;
+	vec3 hemi_dir = {
+		-lp[SEAL_LP_HEMI_VEC], -lp[SEAL_LP_HEMI_VEC + 1], lp[SEAL_LP_HEMI_VEC + 2]
+	};
+	glm_vec3_normalize(hemi_dir);
+	glUniform3fv(r->hemi_light_dir, 1, hemi_dir);
+	glUniform3fv(r->hemi_sky_color, 1, &lp[SEAL_LP_HEMI_SKY_COLOR]);
+	glUniform3fv(r->hemi_mid_color, 1, &lp[SEAL_LP_HEMI_MID_COLOR]);
+	glUniform3fv(r->hemi_ground_color, 1, &lp[SEAL_LP_HEMI_GROUND_COLOR]);
+	// SealEngine's specular uses the hemisphere light vector. hemi_dir points
+	// toward the light, but the shader's specular formula expects the light
+	// propagation direction.
+	vec3 spec_dir;
+	glm_vec3_negate_to(hemi_dir, spec_dir);
+	glUniform3fv(r->specular_light_dir, 1, spec_dir);
+}
+
+static void setup_tone_mapping(struct RE_plugin *plugin)
+{
+	struct RE_renderer *r = plugin->renderer;
+	const float *lp = plugin->light_params;
+	glUniform4fv(r->tonemap_param, 1, &lp[SEAL_LP_TONEMAP_EXPOSURE_BIAS]);
+	glUniform4fv(r->tonemap_param2, 1, &lp[SEAL_LP_TONEMAP_C]);
 }
 
 static void setup_lights(struct RE_plugin *plugin)
@@ -1141,6 +1213,9 @@ static void setup_lights(struct RE_plugin *plugin)
 		glUniform3fv(r->dir_lights[light_index].diffuse, 1, zero);
 		glUniform3fv(r->dir_lights[light_index].globe_diffuse, 1, zero);
 	}
+
+	if (re_plugin_version >= RE_SEAL_PLUGIN)
+		setup_hemisphere_light(plugin);
 }
 
 static int cmp_instances_by_z(const void *lhs, const void *rhs)
@@ -1248,10 +1323,7 @@ void RE_render(struct sact_sprite *sp)
 			glUniform3fv(r->fog_color, 1, plugin->fog_color);
 			break;
 		case RE_FOG_LIGHT_SCATTERING:
-			glUniform4f(r->ls_params, plugin->ls_beta_r, plugin->ls_beta_m, plugin->ls_g, plugin->ls_distance);
-			glUniform3fv(r->ls_light_dir, 1, plugin->ls_light_dir);
-			glUniform3fv(r->ls_light_color, 1, plugin->ls_light_color);
-			glUniform3fv(r->ls_sun_color, 1, plugin->ls_sun_color);
+			setup_light_scattering(plugin);
 			break;
 		}
 	}
@@ -1259,6 +1331,8 @@ void RE_render(struct sact_sprite *sp)
 	glEnable(GL_BLEND);
 
 	setup_lights(plugin);
+	if (re_plugin_version >= RE_SEAL_PLUGIN)
+		setup_tone_mapping(plugin);
 
 	// Sort instances by z-order.
 	struct RE_instance **sorted_instances = sort_instances(plugin, view_transform);

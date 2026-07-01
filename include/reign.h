@@ -19,6 +19,7 @@
 
 #define RE_NR_BACK_CGS 16
 #define RE_NR_INSTANCE_TARGETS 2
+#define RE_NR_LIGHT_PARAMS 41  // .lit parameter count
 
 #include <cglm/types.h>
 
@@ -57,6 +58,29 @@ enum RE_fog_type {
 	RE_FOG_LIGHT_SCATTERING = 2,
 };
 
+// Indices into light_params. Vector entries name their first component.
+enum seal_light_param {
+	SEAL_LP_TONEMAP_EXPOSURE_BIAS = 0,
+	SEAL_LP_TONEMAP_WHITE_POINT   = 1,
+	SEAL_LP_TONEMAP_A             = 2,
+	SEAL_LP_TONEMAP_B             = 3,
+	SEAL_LP_TONEMAP_C             = 4,
+	SEAL_LP_TONEMAP_D             = 5,
+	SEAL_LP_TONEMAP_E             = 6,
+	SEAL_LP_TONEMAP_F             = 7,
+	SEAL_LP_HEMI_VEC              = 8,   // x,y,z
+	SEAL_LP_HEMI_SKY_COLOR        = 11,  // r,g,b
+	SEAL_LP_HEMI_MID_COLOR        = 14,  // r,g,b
+	SEAL_LP_HEMI_GROUND_COLOR     = 17,  // r,g,b
+	SEAL_LP_LS_BETA_R             = 20,
+	SEAL_LP_LS_BETA_M             = 21,
+	SEAL_LP_LS_G                  = 22,
+	SEAL_LP_LS_DISTANCE           = 23,
+	SEAL_LP_LS_LIGHT_VEC          = 24,  // x,y,z
+	SEAL_LP_LS_LIGHT_COLOR        = 27,  // r,g,b
+	SEAL_LP_LS_SUN_COLOR          = 30,  // r,g,b
+};
+
 enum RE_draw_type {
 	RE_DRAW_TYPE_NORMAL   = 0,
 	RE_DRAW_TYPE_ADDITIVE = 1,
@@ -66,12 +90,6 @@ enum RE_draw_type {
 enum RE_draw_options {
 	RE_DRAW_OPTION_EDGE = 0,
 	RE_DRAW_OPTION_MAX
-};
-
-enum RE_draw_edge_mode {
-	RE_DRAW_EDGE_NONE = 0,
-	RE_DRAW_EDGE_CHARACTERS_ONLY = 1,
-	RE_DRAW_EDGE_ALL = 2,
 };
 
 struct RE_options {
@@ -105,6 +123,7 @@ struct RE_back_cg {
 
 struct RE_plugin {
 	struct draw_plugin plugin;
+	enum RE_plugin_version version;
 	int sprite;
 	int nr_instances;
 	struct RE_instance **instances;
@@ -158,6 +177,9 @@ struct RE_plugin {
 
 	// SealEngine
 	int mag_speed;
+	float light_params[RE_NR_LIGHT_PARAMS];
+	float edge_length;
+	vec3 edge_color;
 };
 
 struct RE_instance {
@@ -176,6 +198,7 @@ struct RE_instance {
 	vec3 scale;
 	float alpha;
 	bool draw;
+	bool draw_edge;
 	bool draw_shadow;
 	bool make_shadow;
 	float shadow_volume_bone_radius;
@@ -197,6 +220,7 @@ struct RE_instance {
 	// Lights
 	vec3 vec;
 	vec3 globe_diffuse;
+	float *light_params;
 
 	// Private
 	bool local_transform_needs_update;
@@ -244,6 +268,9 @@ bool RE_instance_optimize_path_line(struct RE_instance *instance);
 bool RE_instance_calc_path_finder_intersect_eye_vec(struct RE_instance *instance, int mouse_x, int mouse_y, vec3 out);
 bool RE_plugin_transform_pos_to_view_pos(struct RE_plugin *plugin, float x, float y, float z, int *view_x, int *view_y);
 bool RE_plugin_get_camera_z_vector(struct RE_plugin *plugin, vec3 out);
+void RE_plugin_reset_light_param(struct RE_plugin *plugin);
+bool RE_plugin_set_fog_type(struct RE_plugin *plugin, int type);
+int RE_plugin_get_fog_type(struct RE_plugin *plugin);
 
 int RE_motion_get_state(struct motion *motion);
 bool RE_motion_set_state(struct motion *motion, int state);

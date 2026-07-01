@@ -23,6 +23,7 @@
 
 #include "system4.h"
 #include "system4/aar.h"
+#include "system4/archive.h"
 #include "system4/cg.h"
 #include "system4/hashtable.h"
 #include "system4/string.h"
@@ -40,6 +41,7 @@ static struct RE_instance *create_instance(struct RE_plugin *plugin)
 {
 	struct RE_instance *instance = xcalloc_aligned(1, struct RE_instance);
 	instance->plugin = plugin;
+	instance->draw_edge = plugin->version == RE_TAPIR_PLUGIN;
 	for (int i = 0; i < RE_NR_INSTANCE_TARGETS; i++)
 		instance->target[i] = -1;
 	glm_vec3_one(instance->scale);
@@ -98,6 +100,7 @@ static void unload_instance(struct RE_instance *instance)
 static void free_instance(struct RE_instance *instance)
 {
 	unload_instance(instance);
+	free(instance->light_params);
 	xfree_aligned(instance);
 }
 
@@ -234,6 +237,7 @@ struct RE_plugin *RE_plugin_new(enum RE_plugin_version version)
 		return NULL;
 
 	struct RE_plugin *plugin = xcalloc_aligned(1, struct RE_plugin);
+	plugin->version = version;
 	plugin->plugin.name = "ReignEngine";
 	plugin->plugin.update = RE_render;
 	plugin->plugin.to_json = RE_to_json;
@@ -245,10 +249,14 @@ struct RE_plugin *RE_plugin_new(enum RE_plugin_version version)
 	for (int i = 0; i < RE_NR_BACK_CGS; i++)
 		RE_back_cg_init(&plugin->back_cg[i]);
 	plugin->mag_speed = 1;
+	if (version == RE_TAPIR_PLUGIN)
+		plugin->draw_options[RE_DRAW_OPTION_EDGE] = 1;
+	plugin->edge_length = 0.02f;
 	plugin->fog_type = RE_FOG_NONE;
-	plugin->fog_near = 1.0;
-	plugin->fog_far = 10.0;
+	plugin->fog_near = 1.0f;
+	plugin->fog_far = 10.0f;
 	glm_vec3_one(plugin->fog_color);
+	lit_reset(plugin->light_params);
 	return plugin;
 }
 
@@ -431,6 +439,10 @@ bool RE_instance_set_type(struct RE_instance *instance, int type)
 		instance->motion->instance = instance;
 		break;
 	case RE_ITYPE_DIRECTIONAL_LIGHT:
+		if (re_plugin_version >= RE_SEAL_PLUGIN) {
+			instance->light_params = xmalloc(RE_NR_LIGHT_PARAMS * sizeof(float));
+			lit_reset(instance->light_params);
+		}
 		break;
 	case RE_ITYPE_SPECULAR_LIGHT:
 		break;
@@ -526,6 +538,16 @@ bool RE_instance_load(struct RE_instance *instance, const char *name)
 			}
 		}
 		return true;
+	case RE_ITYPE_DIRECTIONAL_LIGHT:
+		if (re_plugin_version >= RE_SEAL_PLUGIN) {
+			struct archive_data *dfile = archive_get_by_name(instance->plugin->aar, name);
+			if (!dfile)
+				return false;
+			bool ok = lit_parse(dfile->data, dfile->size, instance->light_params);
+			archive_free_data(dfile);
+			return ok;
+		}
+		return false;
 	default:
 		WARNING("Invalid instance type %d", instance->type);
 		return false;
@@ -784,6 +806,50 @@ bool RE_plugin_get_camera_z_vector(struct RE_plugin *plugin, vec3 out)
 	glm_euler_yxz(euler, rot);
 	glm_mat4_mulv3(rot, GLM_FORWARD, 0.f, out);
 	return true;
+}
+
+void RE_plugin_reset_light_param(struct RE_plugin *plugin)
+{
+	lit_reset(plugin->light_params);
+}
+
+bool RE_plugin_set_fog_type(struct RE_plugin *plugin, int type)
+{
+	if (re_plugin_version == RE_REIGN_PLUGIN) {
+		switch (type) {
+		case 0: plugin->fog_type = RE_FOG_NONE; return true;
+		case 1: plugin->fog_type = RE_FOG_LINEAR; return true;
+		case 2: plugin->fog_type = RE_FOG_LIGHT_SCATTERING; return true;
+		default: break;
+		}
+	} else {
+		switch (type) {
+		case 0: plugin->fog_type = RE_FOG_NONE; return true;
+		case 1: plugin->fog_type = RE_FOG_LIGHT_SCATTERING; return true;
+		default: break;
+		}
+	}
+	WARNING("unknown fog type %d", type);
+	return false;
+}
+
+int RE_plugin_get_fog_type(struct RE_plugin *plugin)
+{
+	if (re_plugin_version == RE_REIGN_PLUGIN) {
+		switch (plugin->fog_type) {
+		case RE_FOG_NONE: return 0;
+		case RE_FOG_LINEAR: return 1;
+		case RE_FOG_LIGHT_SCATTERING: return 2;
+		default: break;
+		}
+	} else {
+		switch (plugin->fog_type) {
+		case RE_FOG_NONE: return 0;
+		case RE_FOG_LIGHT_SCATTERING: return 1;
+		default: break;
+		}
+	}
+	ERROR("[BUG] unexpected fog type %d", plugin->fog_type);
 }
 
 void RE_instance_update_local_transform(struct RE_instance *inst)
