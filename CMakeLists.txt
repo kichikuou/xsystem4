@@ -238,6 +238,10 @@ target_link_options(xsystem4 PRIVATE
   -sENVIRONMENT=web,worker
   -sMODULARIZE=1
   -sEXPORT_ES6=1
+  # iOS 17+ is the declared baseline. Other browsers are set to contemporaries.
+  -sMIN_SAFARI_VERSION=170000
+  -sMIN_CHROME_VERSION=117
+  -sMIN_FIREFOX_VERSION=118
   -sALLOW_MEMORY_GROWTH=1
   -sWASM_WORKERS=1
   -sAUDIO_WORKLET=1
