@@ -17,3 +17,4 @@
 void trace_init(const char *output_path, const char *function_to_trace);
 void trace_begin(const char *name, const char *cat);
 void trace_end(void);
+void trace_dump(void);

@@ -23,6 +23,7 @@
 #include "gfx/private.h"
 #include "input.h"
 #include "scene.h"
+#include "trace.h"
 #include "vm.h"
 #include "xsystem4.h"
 #include "debugger.h"
@@ -626,9 +627,14 @@ void handle_events(void)
 		case SDL_APP_DIDENTERFOREGROUND:
 			gfx_swap();
 			break;
+		case SDL_APP_WILLENTERBACKGROUND:
+			trace_dump();
+			break;
 		case SDL_KEYDOWN:
 			if (e.key.keysym.scancode == SDL_SCANCODE_F9) {
 				vm_stack_trace();
+			} else if (e.key.keysym.scancode == SDL_SCANCODE_F10) {
+				trace_dump();
 			} else if (e.key.keysym.scancode == SDL_SCANCODE_F11) {
 				gfx_toggle_fullscreen();
 			} else if (e.key.keysym.scancode == SDL_SCANCODE_S) {
@@ -744,4 +750,3 @@ void handle_events(void)
 	if (dbg_dap)
 		dbg_dap_handle_messages();
 }
-
