@@ -53,6 +53,14 @@ static struct RE_instance *create_instance(struct RE_plugin *plugin)
 	instance->use_mag_speed = true;
 	instance->column_height = 1.0f;
 	instance->column_radius = 1.0f;
+	glm_vec3_copy((vec3){-1.0f, 2.0f, 0.0f}, instance->vertex_pos[0]);
+	glm_vec3_copy((vec3){-1.0f, 0.0f, 0.0f}, instance->vertex_pos[1]);
+	glm_vec3_copy((vec3){ 1.0f, 2.0f, 0.0f}, instance->vertex_pos[2]);
+	glm_vec3_copy((vec3){ 1.0f, 0.0f, 0.0f}, instance->vertex_pos[3]);
+	glm_vec2_copy((vec2){0.0f, 0.0f}, instance->vertex_uv[0]);
+	glm_vec2_copy((vec2){0.0f, 1.0f}, instance->vertex_uv[1]);
+	glm_vec2_copy((vec2){1.0f, 0.0f}, instance->vertex_uv[2]);
+	glm_vec2_copy((vec2){1.0f, 1.0f}, instance->vertex_uv[3]);
 	glm_mat4_identity(instance->local_transform);
 	glm_mat3_identity(instance->normal_transform);
 	return instance;
@@ -610,19 +618,28 @@ bool RE_instance_set_mesh_show(struct RE_instance *instance, const char *mesh_na
 	return false;
 }
 
+// Converts from the (top-left, top-right, bottom-left, bottom-right) order used
+// by the API to the vertex order of the billboard mesh.
+static const int billboard_vertex_index[4] = {0, 2, 1, 3};
+
 bool RE_instance_set_vertex_pos(struct RE_instance *instance, int index, float x, float y, float z)
 {
-	if (!instance)
+	if (!instance || (unsigned)index >= 4)
 		return false;
 	if (instance->type != RE_ITYPE_BILLBOARD)
 		ERROR("not implemented");
-	// Hack: This works because SetInstanceVertexPos is only used to scale
-	// billboards, and SetInstanceScale is not used for billboards.
-	if (index == 1) {
-		instance->scale[0] = x;
-		instance->scale[1] = y / 2.0;
-	}
-	return false;
+	glm_vec3_copy((vec3){x, y, z}, instance->vertex_pos[billboard_vertex_index[index]]);
+	return true;
+}
+
+bool RE_instance_set_vertex_uv(struct RE_instance *instance, int index, float u, float v)
+{
+	if (!instance || (unsigned)index >= 4)
+		return false;
+	if (instance->type != RE_ITYPE_BILLBOARD)
+		ERROR("not implemented");
+	glm_vec2_copy((vec2){u, v}, instance->vertex_uv[billboard_vertex_index[index]]);
+	return true;
 }
 
 int RE_instance_get_bone_index(struct RE_instance *instance, const char *name)

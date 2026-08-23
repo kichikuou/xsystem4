@@ -2405,7 +2405,11 @@ static bool SealEngine_GetInstanceAngleB(int plugin, int instance, float *angle_
 	return true;
 }
 
-//bool SealEngine_SetInstanceVertexUV(int PluginNumber, int InstanceNumber, int Index, float U, float V);
+static bool SealEngine_SetInstanceVertexUV(int plugin, int instance, int index, float u, float v)
+{
+	return RE_instance_set_vertex_uv(get_instance(plugin, instance), index, u, v);
+}
+
 //bool SealEngine_GetInstanceDiffuse(int PluginNumber, int InstanceNumber, float *pR, float *pG, float *pB);
 //bool SealEngine_GetInstanceAmbient(int PluginNumber, int InstanceNumber, float *pR, float *pG, float *pB);
 
@@ -2636,7 +2640,7 @@ HLL_QUIET_UNIMPLEMENTED(false, bool, SealEngine, IsThreadLoadingMode, int Plugin
 	    HLL_EXPORT(GetInstanceAngle, SealEngine_GetInstanceAngle), \
 	    HLL_EXPORT(GetInstanceAngleP, SealEngine_GetInstanceAngleP), \
 	    HLL_EXPORT(GetInstanceAngleB, SealEngine_GetInstanceAngleB), \
-	    HLL_TODO_EXPORT(SetInstanceVertexUV, SealEngine_SetInstanceVertexUV), \
+	    HLL_EXPORT(SetInstanceVertexUV, SealEngine_SetInstanceVertexUV), \
 	    HLL_TODO_EXPORT(GetInstanceDiffuse, SealEngine_GetInstanceDiffuse), \
 	    HLL_TODO_EXPORT(GetInstanceAmbient, SealEngine_GetInstanceAmbient), \
 	    HLL_EXPORT(GetInstanceAlpha, SealEngine_GetInstanceAlpha), \

@@ -166,24 +166,8 @@ static void destroy_outline_renderer(struct outline_renderer *or)
 		glDeleteProgram(or->program);
 }
 
-static void init_billboard_mesh(struct RE_renderer *r)
+static void init_billboard_unused_vertex_attrs(void)
 {
-	static const GLfloat vertices[] = {
-		// x,    y,   z,    u,   v
-		-1.0,  1.0, 0.0,  0.0, 0.0,
-		-1.0, -1.0, 0.0,  0.0, 1.0,
-		 1.0,  1.0, 0.0,  1.0, 0.0,
-		 1.0, -1.0, 0.0,  1.0, 1.0,
-	};
-	glGenVertexArrays(1, &r->billboard_vao);
-	glBindVertexArray(r->billboard_vao);
-	glGenBuffers(1, &r->billboard_attr_buffer);
-	glBindBuffer(GL_ARRAY_BUFFER, r->billboard_attr_buffer);
-
-	glEnableVertexAttribArray(VATTR_POS);
-	glVertexAttribPointer(VATTR_POS, 3, GL_FLOAT, GL_FALSE, 20, (const void *)0);
-	glEnableVertexAttribArray(VATTR_UV);
-	glVertexAttribPointer(VATTR_UV, 2, GL_FLOAT, GL_FALSE, 20, (const void *)12);
 	glDisableVertexAttribArray(VATTR_LIGHT_UV);
 	glVertexAttrib2f(VATTR_LIGHT_UV, 0.0, 0.0);
 	glDisableVertexAttribArray(VATTR_COLOR);
@@ -196,8 +180,39 @@ static void init_billboard_mesh(struct RE_renderer *r)
 	glVertexAttribI4i(VATTR_BONE_INDEX, 0, 0, 0, 0);
 	glDisableVertexAttribArray(VATTR_BONE_WEIGHT);
 	glVertexAttrib4f(VATTR_BONE_WEIGHT, 0.0, 0.0, 0.0, 0.0);
+}
 
+static void init_billboard_mesh(struct RE_renderer *r)
+{
+	static const GLfloat vertices[] = {
+		// x,    y,   z,    u,   v
+		-1.0,  1.0, 0.0,  0.0, 0.0,
+		-1.0, -1.0, 0.0,  0.0, 1.0,
+		 1.0,  1.0, 0.0,  1.0, 0.0,
+		 1.0, -1.0, 0.0,  1.0, 1.0,
+	};
+	glGenBuffers(1, &r->billboard_particle_attr_buffer);
+	glBindBuffer(GL_ARRAY_BUFFER, r->billboard_particle_attr_buffer);
 	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+	glGenBuffers(1, &r->billboard_instance_attr_buffer);
+
+	glGenVertexArrays(1, &r->billboard_particle_vao);
+	glBindVertexArray(r->billboard_particle_vao);
+	glBindBuffer(GL_ARRAY_BUFFER, r->billboard_particle_attr_buffer);
+	glEnableVertexAttribArray(VATTR_POS);
+	glVertexAttribPointer(VATTR_POS, 3, GL_FLOAT, GL_FALSE, 20, (const void *)0);
+	glEnableVertexAttribArray(VATTR_UV);
+	glVertexAttribPointer(VATTR_UV, 2, GL_FLOAT, GL_FALSE, 20, (const void *)12);
+	init_billboard_unused_vertex_attrs();
+
+	glGenVertexArrays(1, &r->billboard_instance_vao);
+	glBindVertexArray(r->billboard_instance_vao);
+	glBindBuffer(GL_ARRAY_BUFFER, r->billboard_instance_attr_buffer);
+	glEnableVertexAttribArray(VATTR_POS);
+	glVertexAttribPointer(VATTR_POS, 3, GL_FLOAT, GL_FALSE, 20, (const void *)0);
+	glEnableVertexAttribArray(VATTR_UV);
+	glVertexAttribPointer(VATTR_UV, 2, GL_FLOAT, GL_FALSE, 20, (const void *)12);
+	init_billboard_unused_vertex_attrs();
 
 	glBindVertexArray(0);
 	glBindBuffer(GL_ARRAY_BUFFER, 0);
@@ -205,8 +220,10 @@ static void init_billboard_mesh(struct RE_renderer *r)
 
 static void destroy_billboard_mesh(struct RE_renderer *r)
 {
-	glDeleteVertexArrays(1, &r->billboard_vao);
-	glDeleteBuffers(1, &r->billboard_attr_buffer);
+	glDeleteVertexArrays(1, &r->billboard_particle_vao);
+	glDeleteVertexArrays(1, &r->billboard_instance_vao);
+	glDeleteBuffers(1, &r->billboard_particle_attr_buffer);
+	glDeleteBuffers(1, &r->billboard_instance_attr_buffer);
 }
 
 struct RE_renderer *RE_renderer_new(void)
@@ -603,8 +620,6 @@ static void render_billboard(struct RE_instance *inst, struct RE_renderer *r, ma
 	glm_mat4_pick3t(view_mat, rot);
 	glm_mat4_ins3(rot, local_transform);
 	glm_scale(local_transform, inst->scale);
-	// Billboard instances are bottomed at y=0.
-	glm_translate_y(local_transform, 1.0);
 	mat3 normal_transform;
 	// This should be safe because billboards do not have non-uniform scaling.
 	glm_mat4_pick3(local_transform, normal_transform);
@@ -629,7 +644,15 @@ static void render_billboard(struct RE_instance *inst, struct RE_renderer *r, ma
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, bt->texture);
 	glUniform1i(r->texture, 0);
-	glBindVertexArray(r->billboard_vao);
+	GLfloat vertices[4][5];
+	for (int i = 0; i < 4; i++) {
+		glm_vec3_copy(inst->vertex_pos[i], vertices[i]);
+		glm_vec2_copy(inst->vertex_uv[i], vertices[i] + 3);
+	}
+	glBindVertexArray(r->billboard_instance_vao);
+	glBindBuffer(GL_ARRAY_BUFFER, r->billboard_instance_attr_buffer);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STREAM_DRAW);
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
 
 	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 
@@ -649,7 +672,7 @@ static void render_billboard_particles(struct RE_renderer *r, struct RE_instance
 
 	glActiveTexture(GL_TEXTURE0);
 	glUniform1i(r->texture, 0);
-	glBindVertexArray(r->billboard_vao);
+	glBindVertexArray(r->billboard_particle_vao);
 
 	for (int index = 0; index < pae_obj->nr_particles; index++) {
 		struct particle_instance *pi = &po->instances[index];
@@ -742,7 +765,7 @@ static void render_s3de_billboard_particles(struct RE_renderer *r, struct RE_ins
 	}
 	glActiveTexture(GL_TEXTURE0);
 	glUniform1i(r->texture, 0);
-	glBindVertexArray(r->billboard_vao);
+	glBindVertexArray(r->billboard_particle_vao);
 	glDisable(GL_CULL_FACE);
 	glBindTexture(GL_TEXTURE_2D, bt->texture);
 

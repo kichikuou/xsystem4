@@ -201,8 +201,10 @@ struct RE_renderer {
 	GLint blend_tex;
 	GLint use_blend_texture;
 
-	GLuint billboard_vao;
-	GLuint billboard_attr_buffer;
+	GLuint billboard_particle_vao;
+	GLuint billboard_particle_attr_buffer;
+	GLuint billboard_instance_vao;
+	GLuint billboard_instance_attr_buffer;
 	struct hash_table *billboard_textures;  // cg_no -> struct billboard_texture*
 
 	uint32_t last_frame_timestamp;
