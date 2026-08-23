@@ -28,6 +28,7 @@
 
 typedef struct cJSON cJSON;
 struct hash_table;
+struct billboard_texture;
 
 enum RE_plugin_version {
 	RE_REIGN_PLUGIN,  // Toushin Toshi 3
@@ -219,6 +220,8 @@ struct RE_instance {
 	enum RE_draw_type draw_type;
 	vec3 vertex_pos[4];
 	vec2 vertex_uv[4];
+	struct billboard_texture **billboard_frames;
+	int nr_billboard_frames;
 
 	// Lights
 	vec3 vec;

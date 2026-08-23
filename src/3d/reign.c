@@ -70,7 +70,9 @@ static void free_instance(struct RE_instance *instance);
 
 static void unload_instance(struct RE_instance *instance)
 {
-	if (instance->motion) {
+	// A billboard's motion holds frame animation state that the game can set
+	// before loading the instance data, so it must survive unloads.
+	if (instance->motion && instance->type != RE_ITYPE_BILLBOARD) {
 		motion_free(instance->motion);
 		instance->motion = NULL;
 	}
@@ -95,6 +97,12 @@ static void unload_instance(struct RE_instance *instance)
 		free(instance->bone_transforms);
 		instance->bone_transforms = NULL;
 	}
+	if (instance->billboard_frames) {
+		// No need to free the textures, they are owned by the renderer.
+		free(instance->billboard_frames);
+		instance->billboard_frames = NULL;
+		instance->nr_billboard_frames = 0;
+	}
 	if (instance->height_detector) {
 		RE_renderer_free_height_detector(instance->height_detector);
 		instance->height_detector = NULL;
@@ -108,6 +116,8 @@ static void unload_instance(struct RE_instance *instance)
 static void free_instance(struct RE_instance *instance)
 {
 	unload_instance(instance);
+	if (instance->motion)
+		motion_free(instance->motion);
 	free(instance->light_params);
 	xfree_aligned(instance);
 }
@@ -491,6 +501,37 @@ bool RE_instance_data_exists(struct RE_instance *instance, const char *name)
 	return exists;
 }
 
+// Loads the frame images of a billboard instance. They are stored in the
+// archive as "<name>\<basename>.png", "<name>\<basename>[1].png", ...
+static bool load_billboard_frames(struct RE_instance *instance, const char *name)
+{
+	const char *basename = strrchr(name, '\\');
+	basename = basename ? basename + 1 : name;
+	char *path = xmalloc(strlen(name) + strlen(basename) + 22);
+
+	int capacity = 8;
+	instance->billboard_frames = xcalloc(capacity, sizeof(struct billboard_texture *));
+	for (int i = 0;; i++) {
+		if (i == 0)
+			sprintf(path, "%s\\%s.png", name, basename);
+		else
+			sprintf(path, "%s\\%s[%d].png", name, basename, i);
+		struct billboard_texture *bt = RE_renderer_load_billboard_texture_by_path(
+			instance->plugin->renderer, instance->plugin->aar, path);
+		if (!bt)
+			break;
+		if (i == capacity) {
+			instance->billboard_frames = xrealloc_array(
+				instance->billboard_frames, capacity, capacity * 2, sizeof(struct billboard_texture *));
+			capacity *= 2;
+		}
+		instance->billboard_frames[i] = bt;
+		instance->nr_billboard_frames = i + 1;
+	}
+	free(path);
+	return instance->nr_billboard_frames > 0;
+}
+
 bool RE_instance_load(struct RE_instance *instance, const char *name)
 {
 	if (!instance)
@@ -547,6 +588,9 @@ bool RE_instance_load(struct RE_instance *instance, const char *name)
 			}
 		}
 		return true;
+	case RE_ITYPE_BILLBOARD:
+		if (re_plugin_version >= RE_SEAL_PLUGIN)
+			return load_billboard_frames(instance, name);
 	case RE_ITYPE_DIRECTIONAL_LIGHT:
 		if (re_plugin_version >= RE_SEAL_PLUGIN) {
 			struct archive_data *dfile = archive_get_by_name(instance->plugin->aar, name);
@@ -924,9 +968,9 @@ bool RE_motion_set_frame_range(struct motion *motion, float begin, float end)
 		return false;
 	motion->frame_begin = begin;
 	motion->frame_end = end;
-	if (motion->instance->type == RE_ITYPE_BILLBOARD) {
+	if (motion->instance->type == RE_ITYPE_BILLBOARD && re_plugin_version < RE_SEAL_PLUGIN) {
 		for (int i = begin; i < end; i++) {
-			if (!RE_renderer_load_billboard_texture(motion->instance->plugin->renderer, i))
+			if (!RE_renderer_load_billboard_texture_by_no(motion->instance->plugin->renderer, i))
 				return false;
 		}
 	}
@@ -939,9 +983,9 @@ bool RE_motion_set_loop_frame_range(struct motion *motion, float begin, float en
 		return false;
 	motion->loop_frame_begin = begin;
 	motion->loop_frame_end = end;
-	if (motion->instance->type == RE_ITYPE_BILLBOARD) {
+	if (motion->instance->type == RE_ITYPE_BILLBOARD && re_plugin_version < RE_SEAL_PLUGIN) {
 		for (int i = begin; i < end; i++) {
-			if (!RE_renderer_load_billboard_texture(motion->instance->plugin->renderer, i))
+			if (!RE_renderer_load_billboard_texture_by_no(motion->instance->plugin->renderer, i))
 				return false;
 		}
 	}

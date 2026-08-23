@@ -294,7 +294,8 @@ struct RE_renderer *RE_renderer_new(void)
 	init_shadow_renderer(&r->shadow);
 	init_outline_renderer(&r->outline);
 	init_billboard_mesh(r);
-	r->billboard_textures = ht_create(256);
+	r->billboard_textures_by_no = ht_create(256);
+	r->billboard_textures_by_path = ht_create(256);
 	r->last_frame_timestamp = SDL_GetTicks();
 	return r;
 }
@@ -308,15 +309,8 @@ void RE_renderer_set_viewport_size(struct RE_renderer *r, int width, int height)
 	glBindRenderbuffer(GL_RENDERBUFFER, 0);
 }
 
-bool RE_renderer_load_billboard_texture(struct RE_renderer *r, int cg_no)
+static struct billboard_texture *create_billboard_texture(struct cg *cg)
 {
-	if (ht_get_int(r->billboard_textures, cg_no, NULL))
-		return true;
-
-	struct cg *cg = asset_cg_load(cg_no);
-	if (!cg)
-		return false;
-
 	struct billboard_texture *bt = xcalloc(1, sizeof(struct billboard_texture));
 	glGenTextures(1, &bt->texture);
 	glBindTexture(GL_TEXTURE_2D, bt->texture);
@@ -328,10 +322,43 @@ bool RE_renderer_load_billboard_texture(struct RE_renderer *r, int cg_no)
 	glGenerateMipmap(GL_TEXTURE_2D);
 	glBindTexture(GL_TEXTURE_2D, 0);
 	bt->has_alpha = cg->metrics.has_alpha;
+	return bt;
+}
 
+bool RE_renderer_load_billboard_texture_by_no(struct RE_renderer *r, int cg_no)
+{
+	if (ht_get_int(r->billboard_textures_by_no, cg_no, NULL))
+		return true;
+
+	struct cg *cg = asset_cg_load(cg_no);
+	if (!cg)
+		return false;
+
+	ht_put_int(r->billboard_textures_by_no, cg_no, create_billboard_texture(cg));
 	cg_free(cg);
-	ht_put_int(r->billboard_textures, cg_no, bt);
 	return true;
+}
+
+struct billboard_texture *RE_renderer_load_billboard_texture_by_path(struct RE_renderer *r, struct archive *aar, const char *path)
+{
+	struct billboard_texture *bt = ht_get(r->billboard_textures_by_path, path, NULL);
+	if (bt)
+		return bt;
+
+	struct archive_data *dfile = archive_get_by_name(aar, path);
+	if (!dfile)
+		return NULL;
+	struct cg *cg = cg_load_data(dfile);
+	archive_free_data(dfile);
+	if (!cg) {
+		WARNING("cg_load_data failed: %s", path);
+		return NULL;
+	}
+
+	bt = create_billboard_texture(cg);
+	cg_free(cg);
+	ht_put(r->billboard_textures_by_path, path, bt);
+	return bt;
 }
 
 static void free_billboard_texture(void *value)
@@ -345,8 +372,10 @@ void RE_renderer_free(struct RE_renderer *r)
 {
 	glDeleteProgram(r->program);
 	glDeleteRenderbuffers(1, &r->depth_buffer);
-	ht_foreach_value(r->billboard_textures, free_billboard_texture);
-	ht_free_int(r->billboard_textures);
+	ht_foreach_value(r->billboard_textures_by_no, free_billboard_texture);
+	ht_free_int(r->billboard_textures_by_no);
+	ht_foreach_value(r->billboard_textures_by_path, free_billboard_texture);
+	ht_free(r->billboard_textures_by_path);
 	destroy_billboard_mesh(r);
 	destroy_shadow_renderer(&r->shadow);
 	destroy_outline_renderer(&r->outline);
@@ -606,8 +635,15 @@ static void render_billboard(struct RE_instance *inst, struct RE_renderer *r, ma
 {
 	if (!inst->draw)
 		return;
-	int cg_no = inst->motion->current_frame;
-	struct billboard_texture *bt = ht_get_int(r->billboard_textures, cg_no, NULL);
+	int frame = inst->motion->current_frame;
+	struct billboard_texture *bt;
+	if (inst->nr_billboard_frames > 0) {
+		if (frame < 0 || frame >= inst->nr_billboard_frames)
+			return;
+		bt = inst->billboard_frames[frame];
+	} else {
+		bt = ht_get_int(r->billboard_textures_by_no, frame, NULL);
+	}
 	if (!bt)
 		return;
 	bool is_transparent = bt->has_alpha || inst->alpha < 1.0f;
