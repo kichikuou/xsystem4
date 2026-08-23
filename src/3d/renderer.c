@@ -1086,7 +1086,8 @@ static void render_outlines(struct RE_plugin *plugin, mat4 view_transform)
 	bool seal_edge = re_plugin_version >= RE_SEAL_PLUGIN;
 	if (seal_edge) {
 		glUniform3fv(or->outline_color, 1, plugin->edge_color);
-		glUniform1f(or->outline_thickness, plugin->edge_length);
+		float thickness = plugin->edge_length * (1.f - plugin->edge_reduction_rate);
+		glUniform1f(or->outline_thickness, thickness);
 	}
 
 	glCullFace(GL_FRONT);

@@ -2550,8 +2550,20 @@ static float SealEngine_GetEdgeLength(int PluginNumber)
 	return p ? p->edge_length : 0.0;
 }
 
-//bool SealEngine_SetEdgeReductionRate(int PluginNumber, float EdgeReductionRate);
-//float SealEngine_GetEdgeReductionRate(int PluginNumber);
+static bool SealEngine_SetEdgeReductionRate(int plugin, float rate)
+{
+	struct RE_plugin *p = RE_get_plugin(plugin);
+	if (!p)
+		return false;
+	p->edge_reduction_rate = rate;
+	return true;
+}
+
+static float SealEngine_GetEdgeReductionRate(int plugin)
+{
+	struct RE_plugin *p = RE_get_plugin(plugin);
+	return p ? p->edge_reduction_rate : 0.0;
+}
 
 static bool SealEngine_SetEdgeColor(int PluginNumber, float ColorR, float ColorG, float ColorB)
 {
@@ -2702,8 +2714,8 @@ HLL_QUIET_UNIMPLEMENTED(false, bool, SealEngine, IsThreadLoadingMode, int Plugin
 	    HLL_TODO_EXPORT(GetSoftFogEdgeLength, SealEngine_GetSoftFogEdgeLength), \
 	    HLL_EXPORT(SetEdgeLength, SealEngine_SetEdgeLength), \
 	    HLL_EXPORT(GetEdgeLength, SealEngine_GetEdgeLength), \
-	    HLL_TODO_EXPORT(SetEdgeReductionRate, SealEngine_SetEdgeReductionRate), \
-	    HLL_TODO_EXPORT(GetEdgeReductionRate, SealEngine_GetEdgeReductionRate), \
+	    HLL_EXPORT(SetEdgeReductionRate, SealEngine_SetEdgeReductionRate), \
+	    HLL_EXPORT(GetEdgeReductionRate, SealEngine_GetEdgeReductionRate), \
 	    HLL_EXPORT(SetEdgeColor, SealEngine_SetEdgeColor), \
 	    HLL_EXPORT(GetEdgeColor, SealEngine_GetEdgeColor), \
 	    HLL_TODO_EXPORT(Calc2DDetectionHeight, SealEngine_Calc2DDetectionHeight), \
