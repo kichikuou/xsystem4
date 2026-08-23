@@ -195,6 +195,7 @@ struct RE_renderer {
 	GLint tonemap_param;
 	GLint tonemap_param2;
 	GLint nolighting;
+	GLint grayscale_rate;
 	GLint alpha_mode;
 	GLint alpha_texture;
 	GLint uv_scroll;

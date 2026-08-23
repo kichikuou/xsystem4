@@ -199,6 +199,7 @@ struct RE_instance {
 	float pitch, roll, yaw;  // in degrees
 	vec3 scale;
 	float alpha;
+	float grayscale_rate;
 	bool draw;
 	bool draw_edge;
 	bool draw_shadow;

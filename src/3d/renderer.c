@@ -283,6 +283,7 @@ struct RE_renderer *RE_renderer_new(void)
 	r->tonemap_param = glGetUniformLocation(r->program, "tonemap_param");
 	r->tonemap_param2 = glGetUniformLocation(r->program, "tonemap_param2");
 	r->nolighting = glGetUniformLocation(r->program, "nolighting");
+	r->grayscale_rate = glGetUniformLocation(r->program, "grayscale_rate");
 	r->alpha_mode = glGetUniformLocation(r->program, "alpha_mode");
 	r->alpha_texture = glGetUniformLocation(r->program, "alpha_texture");
 	r->uv_scroll = glGetUniformLocation(r->program, "uv_scroll");
@@ -1012,6 +1013,8 @@ static void render_particle_effect(struct RE_instance *inst, struct RE_renderer 
 
 static void render_instance(struct RE_instance *inst, struct RE_renderer *r, mat4 view_mat, enum draw_phase phase)
 {
+	glUniform1f(r->grayscale_rate, inst->grayscale_rate);
+
 	switch (inst->type) {
 	case RE_ITYPE_STATIC:
 		render_static_model(inst, r, phase);

@@ -2422,8 +2422,23 @@ static bool SealEngine_GetInstanceAlpha(int plugin, int instance, float *alpha)
 	return true;
 }
 
-//bool SealEngine_SetInstanceGrayscaleRate(int PluginNumber, int InstanceNumber, float GrayscaleRate);
-//bool SealEngine_GetInstanceGrayscaleRate(int PluginNumber, int InstanceNumber, float *GrayscaleRate);
+static bool SealEngine_SetInstanceGrayscaleRate(int plugin, int instance, float rate)
+{
+	struct RE_instance *ri = get_instance(plugin, instance);
+	if (!ri)
+		return false;
+	ri->grayscale_rate = rate;
+	return true;
+}
+
+static bool SealEngine_GetInstanceGrayscaleRate(int plugin, int instance, float *rate)
+{
+	struct RE_instance *ri = get_instance(plugin, instance);
+	if (!ri)
+		return false;
+	*rate = ri->grayscale_rate;
+	return true;
+}
 
 static bool SealEngine_IsExistInstanceMotion(int plugin, int instance, struct string *motion_name)
 {
@@ -2644,8 +2659,8 @@ HLL_QUIET_UNIMPLEMENTED(false, bool, SealEngine, IsThreadLoadingMode, int Plugin
 	    HLL_TODO_EXPORT(GetInstanceDiffuse, SealEngine_GetInstanceDiffuse), \
 	    HLL_TODO_EXPORT(GetInstanceAmbient, SealEngine_GetInstanceAmbient), \
 	    HLL_EXPORT(GetInstanceAlpha, SealEngine_GetInstanceAlpha), \
-	    HLL_TODO_EXPORT(SetInstanceGrayscaleRate, SealEngine_SetInstanceGrayscaleRate), \
-	    HLL_TODO_EXPORT(GetInstanceGrayscaleRate, SealEngine_GetInstanceGrayscaleRate), \
+	    HLL_EXPORT(SetInstanceGrayscaleRate, SealEngine_SetInstanceGrayscaleRate), \
+	    HLL_EXPORT(GetInstanceGrayscaleRate, SealEngine_GetInstanceGrayscaleRate), \
 	    HLL_EXPORT(IsExistInstanceMotion, SealEngine_IsExistInstanceMotion), \
 	    HLL_TODO_EXPORT(GetInstanceNumofBone, SealEngine_GetInstanceNumofBone), \
 	    HLL_TODO_EXPORT(GetInstanceBoneName, SealEngine_GetInstanceBoneName), \
