@@ -418,6 +418,16 @@ static bool should_draw_shadow(struct mesh *mesh, struct material *material)
 	    && !(material->flags & (MATERIAL_ALPHA | MATERIAL_SPRITE));
 }
 
+static bool lighting_disabled(struct RE_plugin *plugin)
+{
+	return plugin->draw_options[RE_DRAW_OPTION_LIGHTING] <= 0;
+}
+
+static bool is_nolighting(struct RE_plugin *plugin, struct mesh *mesh)
+{
+	return lighting_disabled(plugin) || (mesh->flags & MESH_NOLIGHTING);
+}
+
 static void render_model(struct RE_instance *inst, struct RE_renderer *r, enum draw_phase phase)
 {
 	struct model *model = inst->model;
@@ -478,16 +488,17 @@ static void render_model(struct RE_instance *inst, struct RE_renderer *r, enum d
 			glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ZERO, GL_ONE);
 		}
 
+		bool nolighting = is_nolighting(inst->plugin, mesh);
 		int fog_type = inst->plugin->fog_type;
-		if (!inst->plugin->fog_mode || (re_plugin_version == RE_REIGN_PLUGIN && (mesh->flags & MESH_NOLIGHTING))) {
+		if (!inst->plugin->fog_mode || (re_plugin_version == RE_REIGN_PLUGIN && nolighting)) {
 			fog_type = RE_FOG_NONE;
 		}
 		glUniform1i(r->fog_type, fog_type);
-		glUniform1i(r->nolighting, !!(mesh->flags & MESH_NOLIGHTING));
+		glUniform1i(r->nolighting, nolighting);
 
 		GLboolean use_specular_map = GL_FALSE;
 		float shininess = (mesh->flags & MESH_HAS_SPECULAR_POWER) ? mesh->specular_power : material->specular_shininess;
-		if (inst->plugin->specular_mode && !(mesh->flags & MESH_NOLIGHTING) && shininess > 0.0f) {
+		if (inst->plugin->specular_mode && !nolighting && shininess > 0.0f) {
 			if (mesh->flags & MESH_HAS_SPECULAR_COLOR) {
 				glUniform3fv(r->specular_color, 1, mesh->specular_color);
 			} else {
@@ -522,7 +533,7 @@ static void render_model(struct RE_instance *inst, struct RE_renderer *r, enum d
 
 		if (mesh->flags & MESH_ENVMAP) {
 			glUniform1i(r->diffuse_type, DIFFUSE_ENV_MAP);
-		} else if (mesh->flags & MESH_NOLIGHTING) {
+		} else if (nolighting) {
 			glUniform1i(r->diffuse_type, DIFFUSE_EMISSIVE);
 		} else if (material->light_map && mesh->flags & MESH_HAS_LIGHT_UV && inst->plugin->light_map_mode) {
 			glUniform1i(r->diffuse_type, DIFFUSE_LIGHT_MAP);
@@ -613,8 +624,9 @@ static void render_skinned_model(struct RE_instance *inst, struct RE_renderer *r
 		render_static_model(inst->shadow_volume_instance, r, phase);
 }
 
-static void reset_draw_uniforms(struct RE_renderer *r)
+static void reset_draw_uniforms(struct RE_renderer *r, struct RE_plugin *plugin)
 {
+	bool nolighting = lighting_disabled(plugin);
 	glUniform1f(r->alpha_mod, 1.0f);
 	glUniform3f(r->diffuse_mod, 1.0f, 1.0f, 1.0f);
 	glUniform2f(r->uv_scroll, 0.0f, 0.0f);
@@ -629,7 +641,8 @@ static void reset_draw_uniforms(struct RE_renderer *r)
 	glUniform1f(r->shadow_darkness, 0.0f);
 	glUniform1i(r->alpha_mode, ALPHA_BLEND);
 	glUniform1i(r->fog_type, 0);
-	glUniform1i(r->diffuse_type, DIFFUSE_NORMAL);
+	glUniform1i(r->nolighting, nolighting);
+	glUniform1i(r->diffuse_type, nolighting ? DIFFUSE_EMISSIVE : DIFFUSE_NORMAL);
 }
 
 static void render_billboard(struct RE_instance *inst, struct RE_renderer *r, mat4 view_mat, enum draw_phase phase)
@@ -665,7 +678,7 @@ static void render_billboard(struct RE_instance *inst, struct RE_renderer *r, ma
 	glUniformMatrix4fv(r->local_transform, 1, GL_FALSE, local_transform[0]);
 	glUniformMatrix3fv(r->normal_transform, 1, GL_FALSE, normal_transform[0]);
 
-	reset_draw_uniforms(r);
+	reset_draw_uniforms(r, inst->plugin);
 	glUniform1f(r->alpha_mod, inst->alpha);
 	glUniform1i(r->fog_type, inst->plugin->fog_mode ? inst->plugin->fog_type : 0);
 	switch (inst->draw_type) {
@@ -746,7 +759,8 @@ static void render_polygon_particles(struct RE_renderer *r, struct RE_instance *
 	if (!model)
 		return;
 
-	glUniform1i(r->diffuse_type, DIFFUSE_NORMAL);
+	glUniform1i(r->diffuse_type,
+		lighting_disabled(inst->plugin) ? DIFFUSE_EMISSIVE : DIFFUSE_NORMAL);
 	glUniform1i(r->fog_type, inst->plugin->fog_mode ? inst->plugin->fog_type : 0);
 
 	for (int index = 0; index < pae_obj->nr_particles; index++) {
@@ -840,7 +854,8 @@ static void render_s3de_polygon_particles(struct RE_renderer *r, struct RE_insta
 	if (phase == DRAW_OPAQUE && st->emitter_alpha < 1.0f)
 		return;
 
-	glUniform1i(r->diffuse_type, DIFFUSE_NORMAL);
+	glUniform1i(r->diffuse_type,
+		lighting_disabled(inst->plugin) ? DIFFUSE_EMISSIVE : DIFFUSE_NORMAL);
 	// The .3de blend_type is ignored for polygon objects. Per-mesh additive
 	// blend modes are not yet handled.
 	glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ZERO, GL_ONE);
@@ -910,7 +925,7 @@ static void render_s3de_effect(struct RE_instance *inst, struct RE_renderer *r, 
 		RE_instance_update_local_transform(inst);
 
 	glUniform3fv(r->instance_ambient, 1, inst->ambient);
-	reset_draw_uniforms(r);
+	reset_draw_uniforms(r, inst->plugin);
 
 	if (phase == DRAW_TRANSPARENT)
 		glDepthMask(GL_FALSE);
@@ -980,7 +995,7 @@ static void render_particle_effect(struct RE_instance *inst, struct RE_renderer 
 		return;
 
 	glUniform3fv(r->instance_ambient, 1, inst->ambient);
-	reset_draw_uniforms(r);
+	reset_draw_uniforms(r, inst->plugin);
 
 	glDepthMask(GL_FALSE);
 

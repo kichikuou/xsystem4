@@ -270,6 +270,7 @@ struct RE_plugin *RE_plugin_new(enum RE_plugin_version version)
 	plugin->mag_speed = 1;
 	if (version == RE_TAPIR_PLUGIN)
 		plugin->draw_options[RE_DRAW_OPTION_EDGE] = 1;
+	plugin->draw_options[RE_DRAW_OPTION_LIGHTING] = 1;
 	plugin->edge_length = 0.02f;
 	plugin->fog_type = RE_FOG_NONE;
 	plugin->fog_near = 1.0f;

@@ -90,6 +90,7 @@ enum RE_draw_type {
 
 enum RE_draw_options {
 	RE_DRAW_OPTION_EDGE = 0,
+	RE_DRAW_OPTION_LIGHTING = 1,
 	RE_DRAW_OPTION_MAX
 };
 
