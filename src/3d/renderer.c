@@ -287,6 +287,7 @@ struct RE_renderer *RE_renderer_new(void)
 	r->alpha_mode = glGetUniformLocation(r->program, "alpha_mode");
 	r->alpha_texture = glGetUniformLocation(r->program, "alpha_texture");
 	r->uv_scroll = glGetUniformLocation(r->program, "uv_scroll");
+	r->uv_tiling = glGetUniformLocation(r->program, "uv_tiling");
 	r->blend_tex = glGetUniformLocation(r->program, "blend_tex");
 	r->use_blend_texture = glGetUniformLocation(r->program, "use_blend_texture");
 
@@ -574,6 +575,9 @@ static void render_model(struct RE_instance *inst, struct RE_renderer *r, enum d
 		vec2 uv_scroll;
 		glm_vec2_scale(mesh->uv_scroll, r->last_frame_timestamp / 1000.f, uv_scroll);
 		glUniform2fv(r->uv_scroll, 1, uv_scroll);
+		glUniform4f(r->uv_tiling,
+			material->uv_tiling[0], material->uv_tiling[1],
+			material->blend_uv_tiling[0], material->blend_uv_tiling[1]);
 
 		glBindVertexArray(mesh->vao);
 
@@ -630,6 +634,7 @@ static void reset_draw_uniforms(struct RE_renderer *r, struct RE_plugin *plugin)
 	glUniform1f(r->alpha_mod, 1.0f);
 	glUniform3f(r->diffuse_mod, 1.0f, 1.0f, 1.0f);
 	glUniform2f(r->uv_scroll, 0.0f, 0.0f);
+	glUniform4f(r->uv_tiling, 1.0f, 1.0f, 1.0f, 1.0f);
 	glUniform1i(r->has_bones, GL_FALSE);
 	glUniform3f(r->specular_color, 0.0f, 0.0f, 0.0f);
 	glUniform1f(r->specular_shininess, 0.0f);
@@ -779,6 +784,9 @@ static void render_polygon_particles(struct RE_renderer *r, struct RE_instance *
 		for (int i = 0; i < model->nr_meshes; i++) {
 			struct mesh *mesh = &model->meshes[i];
 			struct material *material = &model->materials[mesh->material];
+			glUniform4f(r->uv_tiling,
+				material->uv_tiling[0], material->uv_tiling[1],
+				material->blend_uv_tiling[0], material->blend_uv_tiling[1]);
 
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, material->color_maps[0]);
@@ -882,6 +890,9 @@ static void render_s3de_polygon_particles(struct RE_renderer *r, struct RE_insta
 			if (phase != (is_transparent ? DRAW_TRANSPARENT : DRAW_OPAQUE))
 				continue;
 			struct material *material = &model->materials[mesh->material];
+			glUniform4f(r->uv_tiling,
+				material->uv_tiling[0], material->uv_tiling[1],
+				material->blend_uv_tiling[0], material->blend_uv_tiling[1]);
 
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, material->color_maps[0]);

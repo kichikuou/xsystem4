@@ -70,6 +70,8 @@ struct mesh {
 struct material {
 	uint32_t flags;
 	bool is_transparent;
+	vec2 uv_tiling;
+	vec2 blend_uv_tiling;
 	int nr_color_maps;
 	GLuint *color_maps;
 	GLuint specular_map;
@@ -199,6 +201,7 @@ struct RE_renderer {
 	GLint alpha_mode;
 	GLint alpha_texture;
 	GLint uv_scroll;
+	GLint uv_tiling;
 	GLint blend_tex;
 	GLint use_blend_texture;
 
@@ -658,6 +661,7 @@ struct pol_material {
 	char *name;
 	uint32_t flags;
 	char *textures[MAX_TEXTURE_TYPE];
+	vec2 uv_tiling;
 };
 
 struct pol_material_group {
