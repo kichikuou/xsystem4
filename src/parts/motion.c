@@ -156,10 +156,15 @@ static void parts_update_with_motion(struct parts *parts, struct parts_motion *m
 	case PARTS_MOTION_ALPHA:
 		parts_set_alpha(parts, motion_calculate_i(motion, motion_t));
 		break;
-	case PARTS_MOTION_CG:
-		parts_cg_set_by_index(parts, parts_get_cg(parts, parts->state),
-				motion_calculate_i(motion, motion_t));
+	case PARTS_MOTION_CG: {
+		int i = motion_calculate_i(motion, motion_t);
+		if (i == 0) {
+			parts_state_reset(&parts->states[parts->state], PARTS_CG);
+		} else {
+			parts_cg_set_by_index(parts, parts_get_cg(parts, parts->state), i);
+		}
 		break;
+	}
 	case PARTS_MOTION_HGAUGE_RATE:
 		parts_hgauge_set_rate(parts, parts_get_hgauge(parts, parts->state),
 				motion_calculate_f(motion, motion_t));
@@ -532,12 +537,26 @@ void PE_SeekEndMotion(void)
 	PE_SetMotionTime(motion_end_t - 1);
 }
 
-void PE_UpdateMotionTime(int time, possibly_unused bool skip)
+static int msgskip_speedup_rate = 1;
+
+void PE_UpdateMotionTime(int time, bool skip)
 {
-	// TODO: use skip
 	if (is_motion_paused)
 		return;
-	PE_SetMotionTime(motion_t + time);
+	if (skip)
+		PE_SetMotionTime(motion_t + time * msgskip_speedup_rate);
+	else
+		PE_SetMotionTime(motion_t + time);
+}
+
+void PE_SetSpeedupRateByMessageSkip(int parts_no, int rate)
+{
+	msgskip_speedup_rate = max(1, rate);
+}
+
+int PE_GetSpeedupRateByMessageSkip(int parts_no)
+{
+	return msgskip_speedup_rate;
 }
 
 bool PE_IsMotion(void)

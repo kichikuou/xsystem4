@@ -34,23 +34,25 @@
 struct parts_list parts_list = TAILQ_HEAD_INITIALIZER(parts_list);
 static struct parts_list dirty_list = TAILQ_HEAD_INITIALIZER(dirty_list);
 static struct hash_table *parts_table = NULL;
-static Point root_pos = { 0, 0 };
 
-struct parts_controller_stack ctrl_stack;
-bool parts_multi_controller;
-
-static void ctrl_stack_init(void);
-
-#define PARTS_PARAMS_INITIALIZER (struct parts_params) { \
-	.z = 1, \
+#define PARTS_PARAMS_INITIALIZER(Z) (struct parts_params) { \
+	.z = Z, \
 	.pos = { 0, 0 }, \
 	.show = true, \
 	.alpha = 255, \
 	.scale = { 1.0f, 1.0f }, \
 	.rotation = { 0.0f, 0.0f, 0.0f }, \
 	.add_color = { 0, 0, 0, 0 }, \
-	.multiply_color = { 255, 255, 255, 255 } \
+	.multiply_color = { 255, 255, 255, 255 }, \
+	.alpha_clipper_parts_no = 0 \
 }
+
+static struct parts_params root_params = PARTS_PARAMS_INITIALIZER(0);
+
+struct parts_controller_stack ctrl_stack;
+bool parts_multi_controller;
+
+static void ctrl_stack_init(void);
 
 static void parts_init(struct parts *parts)
 {
@@ -59,8 +61,8 @@ static void parts_init(struct parts *parts)
 	parts->sp.has_alpha = true;
 	parts->sp.render = parts_sprite_render;
 	parts->sp.to_json = parts_sprite_to_json;
-	parts->local = PARTS_PARAMS_INITIALIZER;
-	parts->global = PARTS_PARAMS_INITIALIZER;
+	parts->local = PARTS_PARAMS_INITIALIZER(1);
+	parts->global = PARTS_PARAMS_INITIALIZER(1);
 	parts->delegate_index = -1;
 	parts->want_save = true;
 	parts->on_cursor_sound = -1;
@@ -190,6 +192,8 @@ static void parts_state_free(struct parts_state *state)
 			gfx_delete_texture(&state->anim.frames[i]);
 		}
 		free(state->anim.frames);
+		if (state->anim.cg_name)
+			free_string(state->anim.cg_name);
 		break;
 	case PARTS_NUMERAL:
 		gfx_delete_texture(&state->common.texture);
@@ -450,16 +454,16 @@ void parts_set_pos(struct parts *parts, Point pos)
 	parts->local.pos.x = pos.x;
 	parts->local.pos.y = pos.y;
 	parts_recalculate_hitbox(parts);
-	parts_update_global_pos(parts, parts->parent ? parts->parent->global.pos : root_pos);
+	parts_update_global_pos(parts, parts->parent ? parts->parent->global.pos : root_params.pos);
 	parts_dirty(parts);
 }
 
 void parts_set_global_pos(Point pos)
 {
-	root_pos = pos;
+	root_params.pos = pos;
 	struct parts *parts;
 	PARTS_LIST_FOREACH(parts) {
-		parts_update_global_pos(parts, root_pos);
+		parts_update_global_pos(parts, root_params.pos);
 	}
 	parts_engine_dirty();
 }
@@ -748,7 +752,7 @@ void parts_numeral_font_init(struct parts_numeral_font *font)
 			x += font->width[i];
 		}
 		gfx_delete_texture(&t);
-		free(cg);
+		cg_free(cg);
 	}
 }
 
@@ -814,7 +818,7 @@ static int parts_load_numeral_font_separate_string(struct string *cg_name)
 	return font_no;
 }
 
-static int parts_load_numeral_font_combined(struct cg *cg, int cg_no, int w[12])
+static int parts_load_numeral_font_combined(int cg_no, int w[12])
 {
 	// find existing font
 	for (int i = 0; i < parts_nr_numeral_fonts; i++) {
@@ -1000,6 +1004,7 @@ void parts_release(int parts_no)
 		struct parts *child = TAILQ_FIRST(&parts->children);
 		TAILQ_REMOVE(&parts->children, child, child_list_entry);
 		child->parent = NULL;
+		parts_component_dirty(child);
 	}
 	if (parts->parent) {
 		TAILQ_REMOVE(&parts->parent->children, parts, child_list_entry);
@@ -1092,13 +1097,14 @@ static void parts_combine_params(struct parts_params *parent, struct parts_param
 	out->multiply_color.r = parent->multiply_color.r * (child->multiply_color.r / 255.0f);
 	out->multiply_color.g = parent->multiply_color.g * (child->multiply_color.g / 255.0f);
 	out->multiply_color.b = parent->multiply_color.b * (child->multiply_color.b / 255.0f);
+	out->alpha_clipper_parts_no = child->alpha_clipper_parts_no
+			? child->alpha_clipper_parts_no : parent->alpha_clipper_parts_no;
 }
 
 static void parts_update_component(struct parts *parts)
 {
-	if (parts->parent) {
-		parts_combine_params(&parts->parent->global, &parts->local, &parts->global);
-	}
+	parts_combine_params(parts->parent ? &parts->parent->global : &root_params,
+			&parts->local, &parts->global);
 	if (parts_get_sprite_z(parts) != parts->sp.z
 			|| parts_get_sprite_z2(parts) != parts->sp.z2) {
 		parts_list_resort(parts);
@@ -1370,8 +1376,11 @@ bool parts_animation_set_cg(struct parts *parts, struct parts_animation *anim,
 {
 	bool r = _parts_animation_set_cg(parts, anim, start_no, nr_frames, frame_time,
 			load_loop_cg_by_name, cg_name);
-	if (r)
+	if (r) {
+		if (anim->cg_name)
+			free_string(anim->cg_name);
 		anim->cg_name = string_dup(cg_name);
+	}
 	return r;
 }
 
@@ -1423,6 +1432,7 @@ bool parts_gauge_set_cg(struct parts *parts, struct parts_gauge *g, struct strin
 	if (!cg)
 		return false;
 	_parts_set_gauge_cg(parts, g, cg);
+	cg_free(cg);
 	g->cg_no = cg_no;
 	return true;
 }
@@ -1433,6 +1443,7 @@ bool parts_gauge_set_cg_by_index(struct parts *parts, struct parts_gauge *g, int
 	if (!cg)
 		return false;
 	_parts_set_gauge_cg(parts, g, cg);
+	cg_free(cg);
 	g->cg_no = cg_no;
 	return true;
 }
@@ -1583,13 +1594,12 @@ bool PE_SetNumeralLinkedCGNumberWidthWidthList_by_index(int parts_no, int cg_no,
 	if (!parts_state_valid(--state))
 		return false;
 
-	struct cg *cg = asset_cg_load(cg_no);
-	if (!cg)
+	if (!asset_exists(ASSET_CG, cg_no))
 		return false;
 
 	int w[12] = { w0, w1, w2, w3, w4, w5, w6, w7, w8, w9, w_minus, w_comma };
 	struct parts_numeral *n = parts_get_numeral(parts_get(parts_no), state);
-	n->font_no = parts_load_numeral_font_combined(cg, cg_no, w);
+	n->font_no = parts_load_numeral_font_combined(cg_no, w);
 	return true;
 }
 
@@ -1601,13 +1611,12 @@ bool PE_SetNumeralLinkedCGNumberWidthWidthList(int parts_no, struct string *cg_n
 		return false;
 
 	int no;
-	struct cg *cg = asset_cg_load_by_name(cg_name->text, &no);
-	if (!cg)
+	if (!asset_exists_by_name(ASSET_CG, cg_name->text, &no))
 		return false;
 
 	int w[12] = { w0, w1, w2, w3, w4, w5, w6, w7, w8, w9, w_minus, w_comma };
 	struct parts_numeral *n = parts_get_numeral(parts_get(parts_no), state);
-	n->font_no = parts_load_numeral_font_combined(cg, no, w);
+	n->font_no = parts_load_numeral_font_combined(no, w);
 	return true;
 }
 
@@ -1933,7 +1942,8 @@ float PE_GetPartsRotateZ(int parts_no)
 void PE_SetPartsAlphaClipperPartsNumber(int parts_no, int alpha_clipper_parts_no)
 {
 	struct parts *parts = parts_get(parts_no);
-	parts->alpha_clipper_parts_no = alpha_clipper_parts_no;
+	parts->local.alpha_clipper_parts_no = alpha_clipper_parts_no;
+	parts_component_dirty(parts);
 	parts_dirty(parts);
 }
 
@@ -2096,12 +2106,6 @@ bool PE_IsExist(int parts_no)
 	return !!ht_get_int(parts_table, parts_no, NULL);
 }
 
-void PE_SetSpeedupRateByMessageSkip(int parts_no, int rate)
-{
-	if (rate != 1)
-		UNIMPLEMENTED("(%d, %d)");
-}
-
 static void ctrl_stack_init(void)
 {
 	memset(&ctrl_stack, 0, sizeof(ctrl_stack));
@@ -2152,7 +2156,7 @@ void PE_RemoveController(struct page **erase_number_list, int index)
 		struct parts *next = TAILQ_NEXT(p, parts_list_entry);
 		if (p->controller_no == ctrl_no) {
 			*erase_number_list = array_pushback(*erase_number_list,
-					(union vm_value){.i = p->no}, AIN_ARRAY_INT, -1);
+					(union vm_value){.i = p->delegate_index}, AIN_ARRAY_INT, -1);
 			parts_release(p->no);
 		}
 		p = next;
@@ -2183,6 +2187,11 @@ int PE_get_active_controller(void)
 int PE_get_system_controller(void)
 {
 	return PARTS_CONTROLLER_SYSTEM_OVERLAY;
+}
+
+int PE_get_nr_controllers(void)
+{
+	return ctrl_stack.nr_controllers;
 }
 
 void PE_parts_set_want_save(int parts_no, bool want_save)
@@ -2249,13 +2258,8 @@ int PE_get_movie_sprite(int parts_no, int state)
 	return parts->states[state].movie.sprite_no;
 }
 
-bool PE_CreateParts3DLayerPluginID(int parts_no, int state)
+bool parts_3dlayer_create_plugin(struct parts_3dlayer *l)
 {
-	if (!parts_state_valid(--state))
-		return false;
-	struct parts *parts = parts_get(parts_no);
-	struct parts_3dlayer *l = parts_get_3dlayer(parts, state);
-
 	if (l->plugin >= 0)
 		return false;
 
@@ -2282,6 +2286,14 @@ bool PE_CreateParts3DLayerPluginID(int parts_no, int state)
 	l->plugin = handle;
 	l->sprite_no = sp_no;
 	return true;
+}
+
+bool PE_CreateParts3DLayerPluginID(int parts_no, int state)
+{
+	if (!parts_state_valid(--state))
+		return false;
+	struct parts *parts = parts_get(parts_no);
+	return parts_3dlayer_create_plugin(parts_get_3dlayer(parts, state));
 }
 
 int PE_GetParts3DLayerPluginID(int parts_no, int state)

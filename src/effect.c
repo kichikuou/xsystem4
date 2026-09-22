@@ -75,6 +75,7 @@ const char *effect_names[NR_EFFECTS] = {
 	[EFFECT_BLUR_FADEOUT]           = "EFFECT_BLUR_FADEOUT",
 	[EFFECT_BLUR_CROSSFADE]         = "EFFECT_BLUR_CROSSFADE",
 	[EFFECT_2ROT_ZOOM_BLEND_BLUR]   = "EFFECT_2ROT_ZOOM_BLEND_BLUR",
+	[EFFECT_VWAVE_SCROLL_CROSSFADE] = "EFFECT_VWAVE_SCROLL_CROSSFADE",
 	[EFFECT_VWAVE_CROSSFADE]        = "EFFECT_VWAVE_CROSSFADE",
 };
 
@@ -145,6 +146,7 @@ static void render_effect_shader(struct effect_shader *shader, Texture *dst, Tex
 static struct effect_shader crossfade_shader = EFFECT_SHADER("shaders/effects/crossfade.f.glsl");
 static struct effect_shader crossfade_lr_shader = EFFECT_SHADER("shaders/effects/crossfade_lr.f.glsl");
 static struct effect_shader crossfade_up_down_shader = EFFECT_SHADER("shaders/effects/crossfade_up_down.f.glsl");
+static struct effect_shader crossfade_down_up_shader = EFFECT_SHADER("shaders/effects/crossfade_down_up.f.glsl");
 static struct effect_shader mosaic_shader = EFFECT_SHADER("shaders/effects/mosaic.f.glsl");
 static struct effect_shader blind_down_shader = EFFECT_SHADER("shaders/effects/blind_down.f.glsl");
 static struct effect_shader blind_lr_shader = EFFECT_SHADER("shaders/effects/blind_lr.f.glsl");
@@ -155,12 +157,14 @@ static struct effect_shader turn_page_shader = EFFECT_SHADER("shaders/effects/tu
 static struct effect_shader sepia_noise_crossfade_shader = EFFECT_SHADER("shaders/effects/sepia_noise_crossfade.f.glsl");
 static struct effect_shader blur_fadeout_shader = EFFECT_SHADER("shaders/effects/blur_fadeout.f.glsl");
 static struct effect_shader blur_crossfade_shader = EFFECT_SHADER("shaders/effects/blur_crossfade.f.glsl");
+static struct effect_shader vwave_scroll_crossfade_shader = EFFECT_SHADER("shaders/effects/vwave_scroll_crossfade.f.glsl");
 static struct effect_shader vwave_crossfade_shader = EFFECT_SHADER("shaders/effects/vwave_crossfade.f.glsl");
 
 static struct effect_shader *effect_shaders[NR_EFFECTS] = {
 	[EFFECT_CROSSFADE] = &crossfade_shader,
 	[EFFECT_CROSSFADE_LR] = &crossfade_lr_shader,
 	[EFFECT_UP_DOWN_CROSSFADE] = &crossfade_up_down_shader,
+	[EFFECT_DOWN_UP_CROSSFADE] = &crossfade_down_up_shader,
 	[EFFECT_CROSSFADE_MOSAIC] = &mosaic_shader,
 	[EFFECT_BLIND_DOWN] = &blind_down_shader,
 	[EFFECT_BLIND_LR] = &blind_lr_shader,
@@ -171,6 +175,7 @@ static struct effect_shader *effect_shaders[NR_EFFECTS] = {
 	[EFFECT_SEPIA_NOISE_CROSSFADE] = &sepia_noise_crossfade_shader,
 	[EFFECT_BLUR_FADEOUT] = &blur_fadeout_shader,
 	[EFFECT_BLUR_CROSSFADE] = &blur_crossfade_shader,
+	[EFFECT_VWAVE_SCROLL_CROSSFADE] = &vwave_scroll_crossfade_shader,
 	[EFFECT_VWAVE_CROSSFADE] = &vwave_crossfade_shader,
 };
 

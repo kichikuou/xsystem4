@@ -158,23 +158,25 @@ static uint32_t char_to_code(const char *ch, enum charmap charmap)
 	return c;
 }
 
-float gfx_size_char(struct text_style *ts, const char *ch)
+float gfx_size_char_unstyled(struct text_style *ts, const char *ch)
 {
 	struct font_size *size = text_style_font_size(ts);
 	return font_size_char(size, char_to_code(ch, size->font->charmap));
 }
 
-float gfx_size_char_kerning(struct text_style *ts, uint32_t code, uint32_t code_next)
+float gfx_size_char(struct text_style *ts, const char *ch)
 {
-	struct font_size *size = text_style_font_size(ts);
-	return size->font->size_char_kerning(size, code, code_next);
+	float w = gfx_size_char_unstyled(ts, ch);
+	if (gfx_text_advance_edges)
+		w += ts->edge_left + ts->edge_right + ceilf(ts->bold_width)*2;
+	return w * ts->scale_x;
 }
 
 float gfx_size_text(struct text_style *ts, const char *text)
 {
 	struct font_size *size = text_style_font_size(ts);
 	float edge_advance = gfx_text_advance_edges
-		? ts->edge_left + ts->edge_right + ceilf(ts->bold_width)
+		? ts->edge_left + ts->edge_right + ceilf(ts->bold_width)*2
 		: 0.0f;
 	float x = 0.0f;
 	while (*text) {
@@ -182,7 +184,7 @@ float gfx_size_text(struct text_style *ts, const char *text)
 		x += edge_advance;
 		text = sjis_skip_char(text);
 	}
-	return x;
+	return x * ts->scale_x;;
 }
 
 float gfx_get_actual_font_size(unsigned face, float size)

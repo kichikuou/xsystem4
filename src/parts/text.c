@@ -84,11 +84,10 @@ static const char *parts_text_append_char(struct parts_text *t, const char *str)
 
 	ch->off = text_style_offset(&t->ts);
 	int len = extract_sjis_char(str, ch->ch);
-	int width = ceilf(text_style_width(&t->ts, ch->ch));
+	int width = gfx_size_char(&t->ts, ch->ch);
 	int height = text_style_height(&t->ts);
 	gfx_init_texture_rgba(&ch->t, width, height, (SDL_Color){0,0,0,0});
-	ch->advance = gfx_render_textf(&ch->t, 0, 0, ch->ch, &t->ts, false);
-
+	ch->advance = ceilf(gfx_render_textf(&ch->t, 0, 0, ch->ch, &t->ts, false));
 	line->width += ch->advance;
 	line->height = max(line->height, height);
 	return str + len;
@@ -141,6 +140,7 @@ static void parts_text_rerender(struct parts *parts, struct parts_text *t)
 		return;
 	struct string *text = parts_text_get(t);
 	parts_text_free(t);
+	t->ts.font_size = NULL; // clear cached font
 	t->lines = NULL;
 	t->nr_lines = 0;
 	parts_text_append(parts, t, text);
@@ -167,6 +167,14 @@ bool PE_SetText(int parts_no, struct string *text, int state)
 	parts_text_clear(parts, state);
 	parts_text_append(parts, parts_get_text(parts, state), text);
 	return true;
+}
+
+struct string *PE_GetText(int parts_no, int state)
+{
+	if (!parts_state_valid(--state))
+		return NULL;
+
+	return parts_text_get(parts_get_text(parts_get(parts_no), state));
 }
 
 bool PE_AddPartsText(int parts_no, struct string *text, int state)
@@ -205,6 +213,7 @@ bool PE_SetFont(int parts_no, int type, int size, int r, int g, int b, float bol
 	text->ts.weight = bold_weight * 1000;
 	text->ts.edge_color = (SDL_Color) { edge_r, edge_g, edge_b, 255 };
 	text_style_set_edge_width(&text->ts, edge_weight);
+	text->ts.bold_width = bold_weight;
 	parts_text_rerender(parts, text);
 	return true;
 }

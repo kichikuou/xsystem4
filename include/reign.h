@@ -28,6 +28,9 @@
 
 typedef struct cJSON cJSON;
 struct hash_table;
+struct billboard_texture;
+struct iarray_reader;
+struct iarray_writer;
 
 enum RE_plugin_version {
 	RE_REIGN_PLUGIN,  // Toushin Toshi 3
@@ -89,6 +92,7 @@ enum RE_draw_type {
 
 enum RE_draw_options {
 	RE_DRAW_OPTION_EDGE = 0,
+	RE_DRAW_OPTION_LIGHTING = 1,
 	RE_DRAW_OPTION_MAX
 };
 
@@ -133,6 +137,7 @@ struct RE_plugin {
 	struct RE_renderer *renderer;
 	struct RE_camera camera;
 	mat4 proj_transform;
+	int viewport_x, viewport_y, viewport_width, viewport_height;
 
 	struct RE_back_cg back_cg[RE_NR_BACK_CGS];
 
@@ -179,6 +184,7 @@ struct RE_plugin {
 	int mag_speed;
 	float light_params[RE_NR_LIGHT_PARAMS];
 	float edge_length;
+	float edge_reduction_rate;
 	vec3 edge_color;
 };
 
@@ -192,11 +198,13 @@ struct RE_instance {
 	struct height_detector *height_detector;
 
 	enum RE_instance_type type;
+	struct string *name;
 	int target[RE_NR_INSTANCE_TARGETS];
 	vec3 pos;
 	float pitch, roll, yaw;  // in degrees
 	vec3 scale;
 	float alpha;
+	float grayscale_rate;
 	bool draw;
 	bool draw_edge;
 	bool draw_shadow;
@@ -216,6 +224,10 @@ struct RE_instance {
 
 	// Billboards
 	enum RE_draw_type draw_type;
+	vec3 vertex_pos[4];
+	vec2 vertex_uv[4];
+	struct billboard_texture **billboard_frames;
+	int nr_billboard_frames;
 
 	// Lights
 	vec3 vec;
@@ -259,6 +271,7 @@ bool RE_instance_load_next_motion(struct RE_instance *instance, const char *name
 bool RE_instance_free_next_motion(struct RE_instance *instance);
 bool RE_instance_set_mesh_show(struct RE_instance *instance, const char *mesh_name, bool show);
 bool RE_instance_set_vertex_pos(struct RE_instance *instance, int index, float x, float y, float z);
+bool RE_instance_set_vertex_uv(struct RE_instance *instance, int index, float u, float v);
 int RE_instance_get_bone_index(struct RE_instance *instance, const char *name);
 bool RE_instance_trans_local_pos_to_world_pos_by_bone(struct RE_instance *instance, int bone, vec3 offset, vec3 out);
 float RE_instance_calc_height(struct RE_instance *instance, float x, float z);
@@ -352,6 +365,10 @@ bool RE_back_cg_set_name(struct RE_back_cg *bcg, struct string *name, struct arc
 
 void RE_render(struct sact_sprite *sp);
 cJSON *RE_to_json(struct sact_sprite *sp, bool verbose);
+
+// save.c
+void RE_plugin_serialize(struct RE_plugin *plugin, struct iarray_writer *w);
+void RE_plugin_deserialize(struct RE_plugin *plugin, struct iarray_reader *r, int version);
 
 // Exposed for PartsEngine 3DLayer
 int ReignEngine_create_plugin(enum RE_plugin_version version);
