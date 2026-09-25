@@ -97,7 +97,8 @@ static void unload_instance(struct RE_instance *instance)
 		instance->s3de_effect = NULL;
 	}
 	if (instance->bone_transforms) {
-		glDeleteBuffers(1, &instance->bone_transforms_ubo);
+		glDeleteBuffers(RE_BONE_TRANSFORMS_UBO_COUNT,
+				instance->bone_transforms_ubos);
 		free(instance->bone_transforms);
 		instance->bone_transforms = NULL;
 	}
@@ -222,7 +223,10 @@ static void update_bones(struct RE_instance *inst)
 		glm_mat4_transpose(bone_transform);  // column major -> row major
 		glm_mat3x4_copy(bone_transform, inst->bone_transforms[i]);
 	}
-	glBindBuffer(GL_UNIFORM_BUFFER, inst->bone_transforms_ubo);
+	inst->bone_transforms_ubo_index =
+		(inst->bone_transforms_ubo_index + 1) % RE_BONE_TRANSFORMS_UBO_COUNT;
+	glBindBuffer(GL_UNIFORM_BUFFER,
+			inst->bone_transforms_ubos[inst->bone_transforms_ubo_index]);
 	glBufferSubData(GL_UNIFORM_BUFFER, 0, inst->model->nr_bones * sizeof(mat3x4), inst->bone_transforms);
 	glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
@@ -573,10 +577,16 @@ bool RE_instance_load(struct RE_instance *instance, const char *name)
 		}
 		if (instance->model && instance->model->nr_bones > 0) {
 			instance->bone_transforms = xcalloc(instance->model->nr_bones, sizeof(mat3x4));
-			glGenBuffers(1, &instance->bone_transforms_ubo);
-			glBindBuffer(GL_UNIFORM_BUFFER, instance->bone_transforms_ubo);
-			glBufferData(GL_UNIFORM_BUFFER, MAX_BONES * sizeof(mat3x4), NULL, GL_DYNAMIC_DRAW);
+			glGenBuffers(RE_BONE_TRANSFORMS_UBO_COUNT,
+					instance->bone_transforms_ubos);
+			for (int i = 0; i < RE_BONE_TRANSFORMS_UBO_COUNT; i++) {
+				glBindBuffer(GL_UNIFORM_BUFFER,
+						instance->bone_transforms_ubos[i]);
+				glBufferData(GL_UNIFORM_BUFFER, MAX_BONES * sizeof(mat3x4),
+						NULL, GL_DYNAMIC_DRAW);
+			}
 			glBindBuffer(GL_UNIFORM_BUFFER, 0);
+			instance->bone_transforms_ubo_index = RE_BONE_TRANSFORMS_UBO_COUNT - 1;
 		}
 		return !!instance->model;
 	case RE_ITYPE_PARTICLE_EFFECT:

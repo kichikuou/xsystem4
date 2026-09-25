@@ -20,6 +20,7 @@
 #define RE_NR_BACK_CGS 16
 #define RE_NR_INSTANCE_TARGETS 2
 #define RE_NR_LIGHT_PARAMS 41  // .lit parameter count
+#define RE_BONE_TRANSFORMS_UBO_COUNT 4
 
 #include <cglm/types.h>
 
@@ -239,7 +240,8 @@ struct RE_instance {
 	mat4 local_transform;
 	mat3 normal_transform;
 	mat3x4 *bone_transforms;  // row-major, model->nr_bones elements
-	GLuint bone_transforms_ubo;
+	GLuint bone_transforms_ubos[RE_BONE_TRANSFORMS_UBO_COUNT];
+	unsigned bone_transforms_ubo_index;
 	vec4 bounding_sphere;
 	struct RE_instance *shadow_volume_instance;
 	float z_from_camera;
