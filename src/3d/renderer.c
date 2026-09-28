@@ -590,6 +590,9 @@ static void render_model(struct RE_instance *inst, struct RE_renderer *r, enum d
 			glDrawElements(GL_TRIANGLES, mesh->nr_indices, GL_UNSIGNED_SHORT, NULL);
 		else
 			glDrawArrays(GL_TRIANGLES, 0, mesh->nr_vertices);
+		// Diagnostic workaround for xsystem4-android issue #33: force each
+		// model mesh draw to complete before submitting the next one.
+		glFinish();
 
 		if (mesh->flags & MESH_NO_ZWRITE)
 			glDepthMask(GL_TRUE);
@@ -1149,6 +1152,7 @@ static void render_shadow_map(struct RE_plugin *plugin, mat4 light_space_transfo
 				continue;
 			glBindVertexArray(mesh->vao);
 			glDrawArrays(GL_TRIANGLES, 0, mesh->nr_vertices);
+			glFinish();
 		}
 		glBindVertexArray(0);
 	}
@@ -1204,6 +1208,7 @@ static void render_outlines(struct RE_plugin *plugin, mat4 view_transform)
 			}
 			glBindVertexArray(mesh->vao);
 			glDrawArrays(GL_TRIANGLES, 0, mesh->nr_vertices);
+			glFinish();
 		}
 		glBindVertexArray(0);
 	}
