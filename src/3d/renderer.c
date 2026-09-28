@@ -618,9 +618,7 @@ static void render_skinned_model(struct RE_instance *inst, struct RE_renderer *r
 
 	if (model->nr_bones > 0 && inst->motion) {
 		glUniform1i(r->has_bones, GL_TRUE);
-		glBindBufferBase(GL_UNIFORM_BUFFER, BONE_TRANSFORMS_BINDING,
-					inst->bone_transforms_ubos[
-						inst->bone_transforms_ubo_index]);
+		glBindBufferBase(GL_UNIFORM_BUFFER, BONE_TRANSFORMS_BINDING, inst->bone_transforms_ubo);
 	} else {
 		glUniform1i(r->has_bones, GL_FALSE);
 	}
@@ -1140,9 +1138,7 @@ static void render_shadow_map(struct RE_plugin *plugin, mat4 light_space_transfo
 		struct model *model = inst->model;
 		if (model->nr_bones > 0) {
 			glUniform1i(r->shadow.has_bones, GL_TRUE);
-			glBindBufferBase(GL_UNIFORM_BUFFER, BONE_TRANSFORMS_BINDING,
-				inst->bone_transforms_ubos[
-					inst->bone_transforms_ubo_index]);
+			glBindBufferBase(GL_UNIFORM_BUFFER, BONE_TRANSFORMS_BINDING, inst->bone_transforms_ubo);
 		} else {
 			glUniform1i(r->shadow.has_bones, GL_FALSE);
 		}
@@ -1192,9 +1188,7 @@ static void render_outlines(struct RE_plugin *plugin, mat4 view_transform)
 		struct model *model = inst->model;
 		if (inst->model && model->nr_bones > 0) {
 			glUniform1i(or->has_bones, GL_TRUE);
-			glBindBufferBase(GL_UNIFORM_BUFFER, BONE_TRANSFORMS_BINDING,
-					inst->bone_transforms_ubos[
-						inst->bone_transforms_ubo_index]);
+			glBindBufferBase(GL_UNIFORM_BUFFER, BONE_TRANSFORMS_BINDING, inst->bone_transforms_ubo);
 		} else {
 			glUniform1i(or->has_bones, GL_FALSE);
 		}
