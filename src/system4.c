@@ -175,7 +175,9 @@ static void read_user_config_file(const char *path, const char *basedir)
 		return;
 
 	for (int i = 0; i < ini_size; i++) {
-		if (!strcmp(ini[i].name->text, "font-mincho")) {
+		if (!strcmp(ini[i].name->text, "gbk")) {
+			use_gbk = ini_boolean(&ini[i]);
+		} else if (!strcmp(ini[i].name->text, "font-mincho")) {
 			free(config.font_paths[FONT_MINCHO]);
 			config.font_paths[FONT_MINCHO] = user_config_path(&ini[i], basedir);
 		} else if (!strcmp(ini[i].name->text, "font-gothic")) {
@@ -375,6 +377,7 @@ static void usage(void)
 	puts("    -v, --version        Display the version and exit");
 	puts("    -a, --audit          Audit AIN file for xsystem4 compatibility");
 	puts("    -e, --echo-message   Echo in-game messages to standard output");
+	puts("        --gbk           Interpret game strings as GBK instead of Shift-JIS");
 	puts("        --font-mincho    Specify the path to the mincho font to use");
 	puts("        --font-gothic    Specify the path to the gothic font to use");
 	puts("        --font-fnl       Specify the path to a .fnl font library to use");
@@ -406,6 +409,7 @@ enum {
 	LOPT_VERSION,
 	LOPT_AUDIT,
 	LOPT_ECHO_MESSAGE,
+	LOPT_GBK,
 	LOPT_FONT_MINCHO,
 	LOPT_FONT_GOTHIC,
 	LOPT_FONT_FNL,
@@ -434,6 +438,7 @@ int main(int argc, char *argv[])
 	char *ainfile;
 	int err = AIN_SUCCESS;
 	bool audit = false;
+	bool gbk = false;
 
 	char *font_mincho = NULL;
 	char *font_gothic = NULL;
@@ -448,6 +453,7 @@ int main(int argc, char *argv[])
 			{ "version",       no_argument,       0, LOPT_VERSION },
 			{ "audit",         no_argument,       0, LOPT_AUDIT },
 			{ "echo-message",  no_argument,       0, LOPT_ECHO_MESSAGE },
+			{ "gbk",           no_argument,       0, LOPT_GBK },
 			{ "font-mincho",   required_argument, 0, LOPT_FONT_MINCHO },
 			{ "font-gothic",   required_argument, 0, LOPT_FONT_GOTHIC },
 			{ "font-fnl",      required_argument, 0, LOPT_FONT_FNL },
@@ -485,6 +491,10 @@ int main(int argc, char *argv[])
 		case 'e':
 		case LOPT_ECHO_MESSAGE:
 			config.echo = true;
+			break;
+		case LOPT_GBK:
+			gbk = true;
+			use_gbk = true;
 			break;
 		case LOPT_FONT_MINCHO:
 			font_mincho = optarg;
@@ -571,6 +581,8 @@ int main(int argc, char *argv[])
 
 	// NOTE: some command line options are handled here so that they
 	//       will override settings from .xsys4rc files
+	if (gbk)
+		use_gbk = true;
 	if (font_mincho)
 		config.font_paths[FONT_MINCHO] = font_mincho;
 	if (font_gothic)
