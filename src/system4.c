@@ -77,6 +77,10 @@ struct config config = {
 	.font_paths = { NULL, NULL },
 };
 
+// SaveFolder from System40.ini. It is converted to a path in config.save_dir
+// only after .xsys4rc files are read, since they may change the encoding.
+static char *ini_save_folder = NULL;
+
 static struct string *ini_string(struct ini_entry *entry)
 {
 	if (entry->value.type != INI_STRING)
@@ -144,7 +148,7 @@ static bool read_config(const char *path)
 		} else if (!strcmp(ini[i].name->text, "MainVM")) {
 			config.vm_name = strdup(ini_string(&ini[i])->text);
 		} else if (!strcmp(ini[i].name->text, "SaveFolder")) {
-			config.save_dir = strdup(ini_string(&ini[i])->text);
+			ini_save_folder = strdup(ini_string(&ini[i])->text);
 		} else if (!strcmp(ini[i].name->text, "ViewWidth")) {
 			config.view_width = ini_integer(&ini[i]);
 		} else if (!strcmp(ini[i].name->text, "ViewHeight")) {
@@ -169,6 +173,18 @@ static char *user_config_path(struct ini_entry *entry, const char *basedir)
 		return path_join(basedir, path);
 	}
 	return xstrdup(path);
+}
+
+static bool set_encoding(const char *name)
+{
+	if (!strcasecmp(name, "sjis")) {
+		use_gbk = false;
+	} else if (!strcasecmp(name, "gbk")) {
+		use_gbk = true;
+	} else {
+		return false;
+	}
+	return true;
 }
 
 static void read_user_config_file(const char *path, const char *basedir)
@@ -214,6 +230,11 @@ static void read_user_config_file(const char *path, const char *basedir)
 				config.save_format = SAVE_FORMAT_RSM;
 			} else {
 				WARNING("Invalid value for save-format in config: \"%s\"",
+						ini_string(&ini[i])->text);
+			}
+		} else if (!strcmp(ini[i].name->text, "encoding")) {
+			if (!set_encoding(ini_string(&ini[i])->text)) {
+				WARNING("Invalid value for encoding in config: \"%s\"",
 						ini_string(&ini[i])->text);
 			}
 		}
@@ -291,10 +312,6 @@ static void config_init(void)
 	config.home_dir = get_xsystem4_home();
 	if (!config.game_name)
 		config.game_name = strdup(config.ain_filename);
-
-	char *new_save_dir = get_save_path(config.save_dir);
-	free(config.save_dir);
-	config.save_dir = new_save_dir;
 }
 
 static bool config_init_with_ini(const char *ini_path)
@@ -379,6 +396,7 @@ static void usage(void)
 	puts("    -v, --version        Display the version and exit");
 	puts("    -a, --audit          Audit AIN file for xsystem4 compatibility");
 	puts("    -e, --echo-message   Echo in-game messages to standard output");
+	puts("        --encoding       Specify the game's character encoding. sjis (default) or gbk");
 	puts("        --font-mincho    Specify the path to the mincho font to use");
 	puts("        --font-gothic    Specify the path to the gothic font to use");
 	puts("        --font-fnl       Specify the path to a .fnl font library to use");
@@ -410,6 +428,7 @@ enum {
 	LOPT_VERSION,
 	LOPT_AUDIT,
 	LOPT_ECHO_MESSAGE,
+	LOPT_ENCODING,
 	LOPT_FONT_MINCHO,
 	LOPT_FONT_GOTHIC,
 	LOPT_FONT_FNL,
@@ -468,6 +487,7 @@ int main(int argc, char *argv[])
 	char *ainfile;
 	int err = AIN_SUCCESS;
 	bool audit = false;
+	char *encoding = NULL;
 
 	char *font_mincho = NULL;
 	char *font_gothic = NULL;
@@ -482,6 +502,7 @@ int main(int argc, char *argv[])
 			{ "version",       no_argument,       0, LOPT_VERSION },
 			{ "audit",         no_argument,       0, LOPT_AUDIT },
 			{ "echo-message",  no_argument,       0, LOPT_ECHO_MESSAGE },
+			{ "encoding",      required_argument, 0, LOPT_ENCODING },
 			{ "font-mincho",   required_argument, 0, LOPT_FONT_MINCHO },
 			{ "font-gothic",   required_argument, 0, LOPT_FONT_GOTHIC },
 			{ "font-fnl",      required_argument, 0, LOPT_FONT_FNL },
@@ -519,6 +540,9 @@ int main(int argc, char *argv[])
 		case 'e':
 		case LOPT_ECHO_MESSAGE:
 			config.echo = true;
+			break;
+		case LOPT_ENCODING:
+			encoding = optarg;
 			break;
 		case LOPT_FONT_MINCHO:
 			font_mincho = optarg;
@@ -605,6 +629,8 @@ int main(int argc, char *argv[])
 
 	// NOTE: some command line options are handled here so that they
 	//       will override settings from .xsys4rc files
+	if (encoding && !set_encoding(encoding))
+		WARNING("Invalid value for --encoding option: \"%s\"", encoding);
 	if (font_mincho)
 		config.font_paths[FONT_MINCHO] = font_mincho;
 	if (font_gothic)
@@ -623,6 +649,9 @@ int main(int argc, char *argv[])
 		free(config.save_dir);
 		config.save_dir = strdup(savedir);
 	}
+	if (!config.save_dir)
+		config.save_dir = get_save_path(ini_save_folder);
+	free(ini_save_folder);
 
 	if (!(ain = ain_open(ainfile, &err))) {
 		ERROR("%s", ain_strerror(err));
