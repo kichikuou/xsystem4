@@ -397,8 +397,8 @@ static void usage(void)
 	puts("    -a, --audit          Audit AIN file for xsystem4 compatibility");
 	puts("    -e, --echo-message   Echo in-game messages to standard output");
 	puts("        --encoding       Specify the game's character encoding. sjis (default) or gbk");
-	puts("        --font-mincho    Specify the path to the mincho font to use");
-	puts("        --font-gothic    Specify the path to the gothic font to use");
+	puts("        --font-mincho    Specify the path to the mincho font to use (path[:index] for .ttc)");
+	puts("        --font-gothic    Specify the path to the gothic font to use (path[:index] for .ttc)");
 	puts("        --font-fnl       Specify the path to a .fnl font library to use");
 	puts("        --font-x-scale   Specify the x scale for text rendering (1.0 = default scale)");
 	puts("    -j, --joypad         Enable joypad");
@@ -623,7 +623,9 @@ int main(int argc, char *argv[])
 	} else {
 		usage_error("Can't initialize game with argument '%s'", argv[0]);
 	}
-	ainfile = gamedir_path(config.ain_filename);
+	ainfile = gamedir_path_icase(config.ain_filename);
+	if (!ainfile)
+		ERROR("AIN file not found: %s", display_sjis0(config.ain_filename));
 
 	read_user_config();
 
