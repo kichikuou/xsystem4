@@ -93,8 +93,10 @@ struct parts_text_line {
 	float width;
 };
 
-enum parts_type {
-	PARTS_UNINITIALIZED,
+// A sprite is the content of one state of a parts. Each state of a parts can
+// have a different sprite type.
+enum parts_sprite_type {
+	PARTS_SPRITE_NONE,
 	PARTS_CG,
 	PARTS_TEXT,
 	PARTS_ANIMATION,
@@ -108,7 +110,7 @@ enum parts_type {
 	PARTS_RECT_DETECTION,
 	PARTS_LAYOUT_BOX,
 	PARTS_3DLAYER,
-#define PARTS_NR_TYPES (PARTS_3DLAYER+1)
+#define PARTS_NR_SPRITE_TYPES (PARTS_3DLAYER+1)
 };
 
 struct parts_common {
@@ -369,7 +371,7 @@ struct parts_3dlayer {
 };
 
 struct parts_state {
-	enum parts_type type;
+	enum parts_sprite_type type;
 	union {
 		struct parts_common common;
 		struct parts_cg cg;
@@ -492,7 +494,7 @@ extern int parts_nr_numeral_fonts;
 void parts_list_resort(struct parts *parts);
 void parts_component_dirty(struct parts *parts);
 void parts_recalculate_hitbox(struct parts *parts);
-void parts_state_reset(struct parts_state *state, enum parts_type type);
+void parts_state_reset(struct parts_state *state, enum parts_sprite_type type);
 bool parts_cg_set(struct parts *parts, struct parts_cg *cg, struct string *cg_name);
 bool parts_cg_set_by_index(struct parts *parts, struct parts_cg *cg, int cg_no);
 void parts_text_append(struct parts *parts, struct parts_text *t, struct string *text);
@@ -519,7 +521,7 @@ void parts_render_update(void);
 void parts_engine_dirty(void);
 void parts_engine_clean(void);
 void parts_dirty(struct parts *parts);
-void parts_sprite_render(struct sprite *sp);
+void parts_sp_render(struct sprite *sp);
 void parts_render(struct parts *parts);
 void parts_render_family(struct parts *parts);
 
@@ -631,7 +633,7 @@ void parts_do_layout(struct parts *parts);
 struct sprite;
 void parts_debug_init(void);
 cJSON *parts_engine_to_json(struct sprite *sp, bool verbose);
-cJSON *parts_sprite_to_json(struct sprite *sp, bool verbose);
+cJSON *parts_sp_to_json(struct sprite *sp, bool verbose);
 
 static inline bool parts_state_valid(int state)
 {

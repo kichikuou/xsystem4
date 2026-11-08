@@ -216,8 +216,8 @@ static void parts_movie_to_json(struct parts_movie *movie, cJSON *out, bool verb
 
 static cJSON *parts_state_to_json(struct parts_state *state, bool verbose)
 {
-	static const char *state_types[PARTS_NR_TYPES] = {
-		[PARTS_UNINITIALIZED] = "uninitialized",
+	static const char *sprite_types[PARTS_NR_SPRITE_TYPES] = {
+		[PARTS_SPRITE_NONE] = "none",
 		[PARTS_CG] = "cg",
 		[PARTS_TEXT] = "text",
 		[PARTS_ANIMATION] = "animation",
@@ -229,8 +229,8 @@ static cJSON *parts_state_to_json(struct parts_state *state, bool verbose)
 		[PARTS_FLAT] = "flat"
 	};
 	const char *type = "invalid";
-	if (state->type >= 0 && state->type < PARTS_NR_TYPES)
-		type = state_types[state->type];
+	if (state->type >= 0 && state->type < PARTS_NR_SPRITE_TYPES)
+		type = sprite_types[state->type];
 
 	cJSON *obj = cJSON_CreateObject();
 	cJSON_AddStringToObject(obj, "type", type);
@@ -240,7 +240,7 @@ static cJSON *parts_state_to_json(struct parts_state *state, bool verbose)
 	cJSON_AddItemToObjectCS(obj, "surface_area", rectangle_to_json(&state->common.surface_area, verbose));
 
 	switch (state->type) {
-	case PARTS_UNINITIALIZED:
+	case PARTS_SPRITE_NONE:
 		break;
 	case PARTS_CG:
 		parts_cg_to_json(&state->cg, obj, verbose);
@@ -431,7 +431,7 @@ cJSON *parts_to_json(struct parts *parts, bool recursive, bool verbose)
 	return obj;
 }
 
-cJSON *parts_sprite_to_json(struct sprite *sp, bool verbose)
+cJSON *parts_sp_to_json(struct sprite *sp, bool verbose)
 {
 	cJSON *ent = scene_sprite_to_json(sp, verbose);
 	cJSON_AddItemToObjectCS(ent, "parts", parts_to_json((struct parts*)sp, false, verbose));
@@ -489,7 +489,7 @@ static void parts_list_print(struct parts *parts, int indent)
 	sys_message("parts %d ", parts->no);
 	struct parts_state *state = &parts->states[parts->state];
 	switch (state->type) {
-	case PARTS_UNINITIALIZED:
+	case PARTS_SPRITE_NONE:
 		sys_message("(uninitialized)");
 		break;
 	case PARTS_CG:

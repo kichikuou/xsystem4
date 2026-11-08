@@ -431,7 +431,7 @@ static void save_parts_state(struct iarray_writer *w, struct parts_state *state)
 	iarray_write_rectangle(w, &state->common.hitbox);
 	iarray_write_rectangle(w, &state->common.surface_area);
 	switch (state->type) {
-	case PARTS_UNINITIALIZED:
+	case PARTS_SPRITE_NONE:
 	case PARTS_MOVIE:
 	case PARTS_RECT_DETECTION:
 		break;
@@ -479,7 +479,7 @@ static void load_parts_state(struct iarray_reader *r, struct parts *parts,
 	iarray_read_rectangle(r, &state->common.hitbox);
 	iarray_read_rectangle(r, &state->common.surface_area);
 	switch (state->type) {
-	case PARTS_UNINITIALIZED:
+	case PARTS_SPRITE_NONE:
 	case PARTS_MOVIE:
 	case PARTS_RECT_DETECTION:
 		break;

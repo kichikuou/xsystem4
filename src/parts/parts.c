@@ -59,8 +59,8 @@ static void parts_init(struct parts *parts)
 	parts->sp.z = 1;
 	parts->sp.has_pixel = true;
 	parts->sp.has_alpha = true;
-	parts->sp.render = parts_sprite_render;
-	parts->sp.to_json = parts_sprite_to_json;
+	parts->sp.render = parts_sp_render;
+	parts->sp.to_json = parts_sp_to_json;
 	parts->local = PARTS_PARAMS_INITIALIZER(1);
 	parts->global = PARTS_PARAMS_INITIALIZER(1);
 	parts->delegate_index = -1;
@@ -96,7 +96,7 @@ static void dirty_list_remove(struct parts *parts)
 		TAILQ_REMOVE(&dirty_list, parts, dirty_list_entry);
 }
 
-static int parts_get_sprite_z(struct parts *parts)
+static int parts_get_sp_z(struct parts *parts)
 {
 	if (!parts_multi_controller)
 		return parts->global.z;
@@ -104,7 +104,7 @@ static int parts_get_sprite_z(struct parts *parts)
 	return parts->controller_no;
 }
 
-static int parts_get_sprite_z2(struct parts *parts)
+static int parts_get_sp_z2(struct parts *parts)
 {
 	if (!parts_multi_controller)
 		return 0;
@@ -113,14 +113,14 @@ static int parts_get_sprite_z2(struct parts *parts)
 
 static void parts_list_insert(struct parts *parts)
 {
-	int z = parts_get_sprite_z(parts);
-	int z2 = parts_get_sprite_z2(parts);
+	int z = parts_get_sp_z(parts);
+	int z2 = parts_get_sp_z2(parts);
 	parts->sp.z = z;
 	parts->sp.z2 = z2;
 	struct parts *p;
 	PARTS_LIST_FOREACH(p) {
-		int pz = parts_get_sprite_z(p);
-		int pz2 = parts_get_sprite_z2(p);
+		int pz = parts_get_sp_z(p);
+		int pz2 = parts_get_sp_z2(p);
 		if (pz > z || (pz == z && pz2 > z2)) {
 			TAILQ_INSERT_BEFORE(p, parts, parts_list_entry);
 			goto done;
@@ -175,7 +175,7 @@ bool parts_exists(int parts_no)
 static void parts_state_free(struct parts_state *state)
 {
 	switch (state->type) {
-	case PARTS_UNINITIALIZED:
+	case PARTS_SPRITE_NONE:
 	case PARTS_RECT_DETECTION:
 	case PARTS_LAYOUT_BOX:
 		break;
@@ -247,7 +247,7 @@ static struct text_style default_text_style = {
 	.font_size = NULL
 };
 
-void parts_state_reset(struct parts_state *state, enum parts_type type)
+void parts_state_reset(struct parts_state *state, enum parts_sprite_type type)
 {
 	parts_state_free(state);
 	state->type = type;
@@ -271,7 +271,7 @@ void parts_state_reset(struct parts_state *state, enum parts_type type)
 		state->layer3d.plugin = -1;
 		state->layer3d.sprite_no = -1;
 		break;
-	case PARTS_UNINITIALIZED:
+	case PARTS_SPRITE_NONE:
 	case PARTS_CG:
 	case PARTS_ANIMATION:
 	case PARTS_FLASH:
@@ -921,7 +921,7 @@ void parts_set_state(struct parts *parts, enum parts_state_type state)
 {
 	if (parts->lock_input_state)
 		return;
-	while (state > PARTS_STATE_DEFAULT && parts->states[state].type == PARTS_UNINITIALIZED)
+	while (state > PARTS_STATE_DEFAULT && parts->states[state].type == PARTS_SPRITE_NONE)
 		state--;
 	if (parts->state != state) {
 		parts->state = state;
@@ -1104,8 +1104,8 @@ static void parts_update_component(struct parts *parts)
 {
 	parts_combine_params(parts->parent ? &parts->parent->global : &root_params,
 			&parts->local, &parts->global);
-	if (parts_get_sprite_z(parts) != parts->sp.z
-			|| parts_get_sprite_z2(parts) != parts->sp.z2) {
+	if (parts_get_sp_z(parts) != parts->sp.z
+			|| parts_get_sp_z2(parts) != parts->sp.z2) {
 		parts_list_resort(parts);
 	}
 
@@ -2024,7 +2024,7 @@ void PE_SetComponentType(int parts_no, int type, int state)
 	if (!parts_state_valid(--state))
 		return;
 	struct parts *parts = parts_get(parts_no);
-	enum parts_type pt = PARTS_UNINITIALIZED;
+	enum parts_sprite_type pt = PARTS_SPRITE_NONE;
 	switch (type) {
 	case 8:  pt = PARTS_LAYOUT_BOX; break;
 	case 11: pt = PARTS_CG; break;
@@ -2055,7 +2055,7 @@ int PE_GetComponentType(int parts_no, int state)
 
 	switch (parts->states[state].type) {
 	case PARTS_LAYOUT_BOX: return 8;
-	case PARTS_UNINITIALIZED:  // defaluts to CG
+	case PARTS_SPRITE_NONE:  // defaluts to CG
 	case PARTS_CG:
 		return 11;
 	case PARTS_ANIMATION: return 12;

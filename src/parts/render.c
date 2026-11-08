@@ -604,7 +604,7 @@ void parts_render(struct parts *parts)
 	// render
 	struct parts_state *state = &parts->states[parts->state];
 	switch (state->type) {
-	case PARTS_UNINITIALIZED:
+	case PARTS_SPRITE_NONE:
 	case PARTS_RECT_DETECTION:
 	case PARTS_LAYOUT_BOX:
 		break;
@@ -651,7 +651,7 @@ void parts_engine_render(possibly_unused struct sprite *_)
 	}
 }
 
-void parts_sprite_render(struct sprite *sp)
+void parts_sp_render(struct sprite *sp)
 {
 	parts_render((struct parts*)sp);
 }
