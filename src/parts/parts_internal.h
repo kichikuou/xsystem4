@@ -402,6 +402,7 @@ enum parts_widget_type {
 	PARTS_WIDGET_BUTTON = 0,
 	PARTS_WIDGET_CHECKBOX = 1,
 	PARTS_WIDGET_LAYOUTBOX = 8,
+	PARTS_WIDGET_RADIOBOX = 9,
 };
 
 // Appearance shared by buttons and checkboxes.
@@ -427,12 +428,19 @@ struct parts_checkbox {
 	bool button_mode;
 };
 
+struct parts_radiobox {
+	int count;
+	int *members;
+	bool updating;
+};
+
 struct parts {
 	struct sprite sp;
 	enum parts_widget_type widget_type;
 	union {
 		struct parts_button *button;
 		struct parts_checkbox *checkbox;
+		struct parts_radiobox *radiobox;
 		struct parts_layoutbox *layoutbox;
 	} widget;
 	int checkbox_show_link;
@@ -593,6 +601,11 @@ void parts_checkbox_free(struct parts_checkbox *c);
 void parts_checkbox_rebuild(struct parts *parts);
 void parts_checkbox_set_checked(struct parts *parts, bool checked);
 void parts_checkbox_click(struct parts *parts, Point pos);
+
+// radiobox.c
+struct parts_radiobox *parts_get_radiobox(struct parts *parts);
+void parts_radiobox_free(struct parts_radiobox *box);
+void parts_radiobox_member_changed(struct parts *member, bool checked);
 
 // render.c
 void parts_render_init(void);

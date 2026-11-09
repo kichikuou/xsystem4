@@ -41,6 +41,9 @@ void parts_widget_free(struct parts *parts)
 	case PARTS_WIDGET_LAYOUTBOX:
 		free(parts->widget.layoutbox);
 		break;
+	case PARTS_WIDGET_RADIOBOX:
+		parts_radiobox_free(parts->widget.radiobox);
+		break;
 	}
 	parts->widget_type = PARTS_WIDGET_NONE;
 	parts->widget.button = NULL;
@@ -70,6 +73,9 @@ void parts_widget_set_type(struct parts *parts, enum parts_widget_type type)
 		break;
 	case PARTS_WIDGET_LAYOUTBOX:
 		parts_get_layoutbox(parts);
+		break;
+	case PARTS_WIDGET_RADIOBOX:
+		parts_get_radiobox(parts);
 		break;
 	}
 }
