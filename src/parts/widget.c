@@ -35,6 +35,9 @@ void parts_widget_free(struct parts *parts)
 	case PARTS_WIDGET_BUTTON:
 		parts_button_free(parts->widget.button);
 		break;
+	case PARTS_WIDGET_CHECKBOX:
+		parts_checkbox_free(parts->widget.checkbox);
+		break;
 	case PARTS_WIDGET_LAYOUTBOX:
 		free(parts->widget.layoutbox);
 		break;
@@ -61,6 +64,9 @@ void parts_widget_set_type(struct parts *parts, enum parts_widget_type type)
 		break;
 	case PARTS_WIDGET_BUTTON:
 		parts_get_button(parts);
+		break;
+	case PARTS_WIDGET_CHECKBOX:
+		parts_get_checkbox(parts);
 		break;
 	case PARTS_WIDGET_LAYOUTBOX:
 		parts_get_layoutbox(parts);
