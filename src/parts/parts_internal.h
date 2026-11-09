@@ -395,20 +395,40 @@ struct parts_params {
 };
 
 // A widget is a parts that is not made of sprites. Its data is shared by all
-// display states. The values are the component type numbers of the
-// PartsEngine API.
+// display states, and states[] hold its rendered images. The values are
+// the component type numbers of the PartsEngine API.
 enum parts_widget_type {
 	PARTS_WIDGET_NONE = -1,
+	PARTS_WIDGET_BUTTON = 0,
 	PARTS_WIDGET_LAYOUTBOX = 8,
+};
+
+struct parts_button_style {
+	int w, h;
+	int r, g, b;
+	struct text_style font;
+	struct string *cg_name;
+	struct string *flat_name;
+	struct string *text;
+	int text_position;
+	int line_space;
+};
+
+struct parts_button {
+	struct parts_button_style style;
+	bool enabled;
 };
 
 struct parts {
 	struct sprite sp;
 	enum parts_widget_type widget_type;
 	union {
+		struct parts_button *button;
 		struct parts_layoutbox *layoutbox;
 	} widget;
 	enum parts_state_type state;
+	// If widget_type is not PARTS_WIDGET_NONE, the widget owns the states and
+	// keeps its rendered images in them. Then the states are not sprites.
 	struct parts_state states[PARTS_NR_STATES];
 	TAILQ_ENTRY(parts) parts_list_entry;
 	TAILQ_ENTRY(parts) child_list_entry;
@@ -521,10 +541,38 @@ struct string *parts_text_line_get(struct parts_text_line *line);
 struct string *parts_text_get(struct parts_text *t);
 
 // widget.c
+void parts_utf2sjis_array(const char **strs, int n);
 void parts_widget_free(struct parts *parts);
 void parts_widget_reset(struct parts *parts, enum parts_widget_type type,
 		enum parts_sprite_type state_type);
 void parts_widget_set_type(struct parts *parts, enum parts_widget_type type);
+
+static inline bool parts_is_button(struct parts *parts)
+{
+	return parts->widget_type == PARTS_WIDGET_BUTTON;
+}
+
+// button.c
+enum parts_button_resource {
+	PARTS_BUTTON_FLAT,
+	PARTS_BUTTON_CG,
+	PARTS_BUTTON_GENERATED,
+};
+#define PARTS_BUTTON_LOOK_DISABLED PARTS_NR_STATES
+void parts_button_style_init(struct parts_button_style *s, int w, int h);
+void parts_button_style_free(struct parts_button_style *s);
+enum parts_button_resource parts_button_style_load(struct parts *parts, int state,
+		struct parts_button_style *s, const char *infix, int look);
+void parts_button_style_draw_background(struct parts *parts, int state,
+		struct parts_button_style *s, int look);
+void parts_button_style_draw_label(Texture *t, struct parts_button_style *s, bool pressed);
+void parts_button_style_measure_text(struct parts_button_style *s, int *width, int *height,
+		int *line_height);
+void parts_button_style_draw_text(Texture *t, struct parts_button_style *s, int x, int y,
+		int line_height, bool blend);
+struct parts_button *parts_get_button(struct parts *parts);
+void parts_button_free(struct parts_button *b);
+void parts_button_rebuild(struct parts *parts);
 
 // render.c
 void parts_render_init(void);

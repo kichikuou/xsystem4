@@ -887,7 +887,7 @@ bool parts_numeral_set_number(struct parts *parts, struct parts_numeral *num, in
 
 void parts_set_state(struct parts *parts, enum parts_state_type state)
 {
-	if (parts->lock_input_state)
+	if (parts->lock_input_state && !parts_is_button(parts))
 		return;
 	while (state > PARTS_STATE_DEFAULT && parts->states[state].type == PARTS_SPRITE_NONE)
 		state--;
@@ -1980,12 +1980,15 @@ void PE_SetInputState(int parts_no, int state)
 		WARNING("invalid input state: %d", state);
 		return;
 	}
-	parts_set_state(parts_get(parts_no), state);
+	struct parts *parts = parts_get(parts_no);
+	if (!parts_is_button(parts))
+		parts_set_state(parts, state);
 }
 
 int PE_GetInputState(int parts_no)
 {
-	return parts_get(parts_no)->state + 1;
+	struct parts *parts = parts_get(parts_no);
+	return parts_is_button(parts) ? (parts->is_hovered ? 2 : 1) : parts->state + 1;
 }
 
 void PE_SetComponentType(int parts_no, int type, int state)
@@ -1995,6 +1998,7 @@ void PE_SetComponentType(int parts_no, int type, int state)
 	struct parts *parts = parts_get(parts_no);
 	enum parts_sprite_type pt = PARTS_SPRITE_NONE;
 	switch (type) {
+	case PARTS_WIDGET_BUTTON:
 	case PARTS_WIDGET_LAYOUTBOX:
 		parts_widget_set_type(parts, type);
 		return;

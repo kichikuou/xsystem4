@@ -15,20 +15,32 @@
  */
 
 #include "system4.h"
+#include "system4/utfsjis.h"
 #include "parts.h"
 #include "parts_internal.h"
+
+// Replace each UTF-8 string in `strs` with a new CP932 string. The function
+// does not free the old strings.
+void parts_utf2sjis_array(const char **strs, int n)
+{
+	for (int i = 0; i < n; i++)
+		strs[i] = utf2sjis(strs[i], 0);
+}
 
 void parts_widget_free(struct parts *parts)
 {
 	switch (parts->widget_type) {
 	case PARTS_WIDGET_NONE:
 		return;
+	case PARTS_WIDGET_BUTTON:
+		parts_button_free(parts->widget.button);
+		break;
 	case PARTS_WIDGET_LAYOUTBOX:
 		free(parts->widget.layoutbox);
 		break;
 	}
 	parts->widget_type = PARTS_WIDGET_NONE;
-	parts->widget.layoutbox = NULL;
+	parts->widget.button = NULL;
 }
 
 void parts_widget_reset(struct parts *parts, enum parts_widget_type type,
@@ -46,6 +58,9 @@ void parts_widget_set_type(struct parts *parts, enum parts_widget_type type)
 {
 	switch (type) {
 	case PARTS_WIDGET_NONE:
+		break;
+	case PARTS_WIDGET_BUTTON:
+		parts_get_button(parts);
 		break;
 	case PARTS_WIDGET_LAYOUTBOX:
 		parts_get_layoutbox(parts);
