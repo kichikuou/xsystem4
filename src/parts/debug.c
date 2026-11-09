@@ -272,10 +272,6 @@ static cJSON *parts_state_to_json(struct parts_state *state, bool verbose)
 		break;
 	case PARTS_RECT_DETECTION:
 		break;
-	case PARTS_LAYOUT_BOX:
-		cJSON_AddNumberToObject(obj, "layout_type", state->layout_box.layout_type);
-		cJSON_AddNumberToObject(obj, "align", state->layout_box.align);
-		break;
 	case PARTS_3DLAYER:
 		cJSON_AddNumberToObject(obj, "plugin", state->layer3d.plugin);
 		cJSON_AddNumberToObject(obj, "sprite_no", state->layer3d.sprite_no);
@@ -412,6 +408,12 @@ cJSON *parts_to_json(struct parts *parts, bool recursive, bool verbose)
 		cJSON_AddNumberToObject(obj, "linked_from", parts->linked_from);
 	cJSON_AddNumberToObject(obj, "draw_filter", parts->draw_filter);
 	cJSON_AddBoolToObject(obj, "message_window", parts->message_window);
+	if (parts->widget_type == PARTS_WIDGET_LAYOUTBOX) {
+		cJSON *lb = cJSON_CreateObject();
+		cJSON_AddNumberToObject(lb, "layout_type", parts->widget.layoutbox->layout_type);
+		cJSON_AddNumberToObject(lb, "align", parts->widget.layoutbox->align);
+		cJSON_AddItemToObjectCS(obj, "layoutbox", lb);
+	}
 
 	cJSON_AddItemToObjectCS(obj, "motions", motions = cJSON_CreateArray());
 	struct parts_motion *motion;
@@ -488,7 +490,9 @@ static void parts_list_print(struct parts *parts, int indent)
 	indent_message(indent, parts->local.show ? "+ " : "- ");
 	sys_message("parts %d ", parts->no);
 	struct parts_state *state = &parts->states[parts->state];
-	switch (state->type) {
+	if (parts->widget_type == PARTS_WIDGET_LAYOUTBOX) {
+		sys_message("(layoutbox type=%d)", parts->widget.layoutbox->layout_type);
+	} else switch (state->type) {
 	case PARTS_SPRITE_NONE:
 		sys_message("(uninitialized)");
 		break;
@@ -573,9 +577,6 @@ static void parts_list_print(struct parts *parts, int indent)
 		break;
 	case PARTS_RECT_DETECTION:
 		sys_message("(rect_detection)");
-		break;
-	case PARTS_LAYOUT_BOX:
-		sys_message("(layout_box type=%d)", state->layout_box.layout_type);
 		break;
 	case PARTS_3DLAYER:
 		sys_message("(3dlayer plugin=%d sp=%d)", state->layer3d.plugin, state->layer3d.sprite_no);

@@ -94,22 +94,21 @@ struct parts_text_line {
 };
 
 // A sprite is the content of one state of a parts. Each state of a parts can
-// have a different sprite type.
+// have a different sprite type. Save data stores these values.
 enum parts_sprite_type {
-	PARTS_SPRITE_NONE,
-	PARTS_CG,
-	PARTS_TEXT,
-	PARTS_ANIMATION,
-	PARTS_NUMERAL,
-	PARTS_HGAUGE,
-	PARTS_VGAUGE,
-	PARTS_CONSTRUCTION_PROCESS,
-	PARTS_FLASH,
-	PARTS_FLAT,
-	PARTS_MOVIE,
-	PARTS_RECT_DETECTION,
-	PARTS_LAYOUT_BOX,
-	PARTS_3DLAYER,
+	PARTS_SPRITE_NONE = 0,
+	PARTS_CG = 1,
+	PARTS_TEXT = 2,
+	PARTS_ANIMATION = 3,
+	PARTS_NUMERAL = 4,
+	PARTS_HGAUGE = 5,
+	PARTS_VGAUGE = 6,
+	PARTS_CONSTRUCTION_PROCESS = 7,
+	PARTS_FLASH = 8,
+	PARTS_FLAT = 9,
+	PARTS_MOVIE = 10,
+	PARTS_RECT_DETECTION = 11,
+	PARTS_3DLAYER = 13,
 #define PARTS_NR_SPRITE_TYPES (PARTS_3DLAYER+1)
 };
 
@@ -347,13 +346,7 @@ enum parts_layout_type {
 	PARTS_LAYOUT_HORIZONTAL = 2,
 };
 
-// In AliceSoft's PartsEngine implementation, LayoutBox is a component type
-// that is NOT per-state. We store it per-state for uniformity with other
-// component types, but parts_get_layout_box() and all code in layoutbox.c
-// operate on states[0] only. This is safe as long as game scripts never
-// convert a LayoutBox parts to/from another component type.
-struct parts_layout_box {
-	struct parts_common common;
+struct parts_layoutbox {
 	enum parts_layout_type layout_type;
 	bool wrap;
 	int wrap_size;
@@ -383,7 +376,6 @@ struct parts_state {
 		struct parts_flash flash;
 		struct parts_flat flat;
 		struct parts_movie movie;
-		struct parts_layout_box layout_box;
 		struct parts_3dlayer layer3d;
 	};
 };
@@ -402,8 +394,20 @@ struct parts_params {
 	int alpha_clipper_parts_no;
 };
 
+// A widget is a parts that is not made of sprites. Its data is shared by all
+// display states. The values are the component type numbers of the
+// PartsEngine API.
+enum parts_widget_type {
+	PARTS_WIDGET_NONE = -1,
+	PARTS_WIDGET_LAYOUTBOX = 8,
+};
+
 struct parts {
 	struct sprite sp;
+	enum parts_widget_type widget_type;
+	union {
+		struct parts_layoutbox *layoutbox;
+	} widget;
 	enum parts_state_type state;
 	struct parts_state states[PARTS_NR_STATES];
 	TAILQ_ENTRY(parts) parts_list_entry;
@@ -461,6 +465,8 @@ extern bool parts_multi_controller;
 
 struct parts *parts_try_get(int parts_no);
 struct parts *parts_get(int parts_no);
+struct parts_state *parts_get_sprite(struct parts *parts, int state,
+		enum parts_sprite_type type);
 struct parts_cg *parts_get_cg(struct parts *parts, int state);
 struct parts_text *parts_get_text(struct parts *parts, int state);
 struct parts_animation *parts_get_animation(struct parts *parts, int state);
@@ -471,7 +477,6 @@ struct parts_construction_process *parts_get_construction_process(struct parts *
 struct parts_flash *parts_get_flash(struct parts *parts, int state);
 struct parts_flat *parts_get_flat(struct parts *parts, int state);
 struct parts_movie *parts_get_movie(struct parts *parts, int state);
-struct parts_layout_box *parts_get_layout_box(struct parts *parts);
 struct parts_3dlayer *parts_get_3dlayer(struct parts *parts, int state);
 void parts_set_pos(struct parts *parts, Point pos);
 void parts_set_global_pos(Point pos);
@@ -514,6 +519,12 @@ bool parts_3dlayer_create_plugin(struct parts_3dlayer *l);
 void parts_text_free(struct parts_text *t);
 struct string *parts_text_line_get(struct parts_text_line *line);
 struct string *parts_text_get(struct parts_text *t);
+
+// widget.c
+void parts_widget_free(struct parts *parts);
+void parts_widget_reset(struct parts *parts, enum parts_widget_type type,
+		enum parts_sprite_type state_type);
+void parts_widget_set_type(struct parts *parts, enum parts_widget_type type);
 
 // render.c
 void parts_render_init(void);
@@ -627,6 +638,7 @@ void parts_flat_emitter_resolve_layer(
 		struct flat_emitter_layer_effective *out);
 
 // layoutbox.c
+struct parts_layoutbox *parts_get_layoutbox(struct parts *parts);
 void parts_do_layout(struct parts *parts);
 
 // debug.c
