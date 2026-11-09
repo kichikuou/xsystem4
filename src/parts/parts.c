@@ -901,6 +901,9 @@ bool parts_numeral_set_number(struct parts *parts, struct parts_numeral *num, in
 
 void parts_set_state(struct parts *parts, enum parts_state_type state)
 {
+	// Scrollbar input states belong to its individual inner controls.
+	if (parts_is_scrollbar(parts))
+		return;
 	if (parts->lock_input_state && !parts_is_button(parts))
 		return;
 	while (state > PARTS_STATE_DEFAULT && parts->states[state].type == PARTS_SPRITE_NONE)
@@ -1157,6 +1160,10 @@ void PE_Update(int passed_time, bool message_window_show)
 	audio_update();
 	parts_update_animation(passed_time);
 	PE_UpdateInputState(passed_time);
+	struct parts *parts;
+	PARTS_LIST_FOREACH(parts) {
+		parts_widget_update(parts);
+	}
 	parts_render_update();
 }
 
@@ -2014,6 +2021,8 @@ void PE_SetComponentType(int parts_no, int type, int state)
 	switch (type) {
 	case PARTS_WIDGET_BUTTON:
 	case PARTS_WIDGET_CHECKBOX:
+	case PARTS_WIDGET_VSCROLLBAR:
+	case PARTS_WIDGET_HSCROLLBAR:
 	case PARTS_WIDGET_LAYOUTBOX:
 	case PARTS_WIDGET_RADIOBOX:
 		parts_widget_set_type(parts, type);

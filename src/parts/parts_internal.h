@@ -401,6 +401,8 @@ enum parts_widget_type {
 	PARTS_WIDGET_NONE = -1,
 	PARTS_WIDGET_BUTTON = 0,
 	PARTS_WIDGET_CHECKBOX = 1,
+	PARTS_WIDGET_VSCROLLBAR = 2,
+	PARTS_WIDGET_HSCROLLBAR = 3,
 	PARTS_WIDGET_LAYOUTBOX = 8,
 	PARTS_WIDGET_RADIOBOX = 9,
 };
@@ -434,12 +436,39 @@ struct parts_radiobox {
 	bool updating;
 };
 
+struct parts_scrollbar {
+	bool horizontal;
+	int length;
+	int thickness;
+	int leading;
+	int trailing;
+	int total;
+	int view;
+	int pos;
+	int move;
+	float rate;
+	struct string *cg_name;
+	Texture buttons[2][4];
+	Texture thumb[PARTS_NR_STATES];
+	Texture track;
+	int thumb_length;
+	int hover;
+	int pressed;
+	int press_axis;
+	int repeat_time;
+	float press_rate;
+	int notified_pos;
+	float notified_rate;
+	bool dirty;
+};
+
 struct parts {
 	struct sprite sp;
 	enum parts_widget_type widget_type;
 	union {
 		struct parts_button *button;
 		struct parts_checkbox *checkbox;
+		struct parts_scrollbar *scrollbar;
 		struct parts_radiobox *radiobox;
 		struct parts_layoutbox *layoutbox;
 	} widget;
@@ -565,12 +594,20 @@ void parts_widget_free(struct parts *parts);
 void parts_widget_reset(struct parts *parts, enum parts_widget_type type,
 		enum parts_sprite_type state_type);
 void parts_widget_set_type(struct parts *parts, enum parts_widget_type type);
+void parts_widget_update(struct parts *parts);
+void parts_widget_end_input(struct parts *parts);
 
 // True for checkboxes also.
 static inline bool parts_is_button(struct parts *parts)
 {
 	return parts->widget_type == PARTS_WIDGET_BUTTON
 		|| parts->widget_type == PARTS_WIDGET_CHECKBOX;
+}
+
+static inline bool parts_is_scrollbar(struct parts *parts)
+{
+	return parts->widget_type == PARTS_WIDGET_VSCROLLBAR
+		|| parts->widget_type == PARTS_WIDGET_HSCROLLBAR;
 }
 
 // button.c
@@ -617,6 +654,14 @@ void parts_sp_render(struct sprite *sp);
 void parts_render(struct parts *parts);
 void parts_render_family(struct parts *parts);
 
+// scrollbar.c
+struct parts_scrollbar *parts_get_scrollbar(struct parts *parts, bool horizontal);
+void parts_scrollbar_free(struct parts_scrollbar *s);
+void parts_scrollbar_rebuild(struct parts *parts);
+void parts_scrollbar_update(struct parts *parts);
+void parts_scrollbar_mouse(struct parts *parts, Point pos, bool down,
+		bool trigger, bool hovered, int passed_time);
+
 // motion.c
 void parts_clear_motion(struct parts *parts);
 void parts_add_motion(struct parts *parts, struct parts_motion *motion);
@@ -643,6 +688,7 @@ enum parts_message_type {
 	PARTS_MSG_KEY_TRIGGER    = 14,
 	PARTS_MSG_KEY_DOWN       = 15,
 	PARTS_MSG_KEY_UP         = 17,
+	PARTS_MSG_SCROLL         = 20,
 	PARTS_MSG_CHANGED_FLG    = 22,
 };
 
